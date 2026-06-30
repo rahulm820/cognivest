@@ -1,0 +1,41 @@
+# Cognee configuration — EXAMPLE (placeholder values only)
+# ---------------------------------------------------------------------------
+# This is an illustrative template. Real values are env-driven (see
+# ../../docs/environment.md) and, in production, come from the secrets manager.
+# Do NOT commit real credentials. The Cognee SDK is used only inside
+# backend/src/memory/cognee_client.py (the single seam).
+# ---------------------------------------------------------------------------
+
+# Vector store: embeddings of every ingested chunk, namespaced per dataset.
+vector_db:
+  provider: lancedb            # lancedb | weaviate | qdrant  (env: COGNEE_VECTOR_DB_PROVIDER)
+  # url: "http://weaviate:8080"      # for client/server providers
+  # api_key: "${COGNEE_VECTOR_DB_API_KEY}"
+
+# Graph store: entities + relationships, namespaced per dataset.
+graph_db:
+  provider: kuzu               # kuzu | neo4j  (env: COGNEE_GRAPH_DB_PROVIDER)
+  # url: "bolt://neo4j:7687"         # for client/server providers
+  # username: "neo4j"
+  # password: "${COGNEE_GRAPH_DB_PASSWORD}"
+
+# Embedding model used during cognify() to embed chunks (and queries at search time).
+embedding:
+  provider: anthropic          # provider for embeddings (env: COGNEE_LLM_PROVIDER)
+  model: "text-embedding-placeholder"
+
+# LLM provider Cognee uses internally for extraction during cognify().
+llm:
+  provider: anthropic          # (env: COGNEE_LLM_PROVIDER)
+  model: "claude-opus-4-8"     # (env: LLM_MODEL)
+  # api_key: "${ANTHROPIC_API_KEY}"
+
+# On-disk data directory (git-ignored). NEVER commit dataset data.
+data:
+  data_dir: "/data/cognee"     # (env: COGNEE_DATA_DIR)
+
+# Dataset naming convention — informational only; enforced in code at
+# backend/src/memory/dataset_naming.py  ->  dataset_name(ticker) = f"company_{ticker}"
+datasets:
+  naming_pattern: "company_{ticker}"
+  isolation: per_ticker        # never cross-query datasets

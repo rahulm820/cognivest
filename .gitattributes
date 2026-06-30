@@ -1,0 +1,25 @@
+# Normalize line endings
+* text=auto eol=lf
+
+*.py    text diff=python
+*.ts    text
+*.tsx   text
+*.js    text
+*.json  text
+*.md    text
+*.yml   text
+*.yaml  text
+*.toml  text
+*.sh    text eol=lf
+
+# Binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.pem   binary
+*.lockb binary
+
+# Generated / vendored — collapse in diffs
+pnpm-lock.yaml      linguist-generated=true
+poetry.lock         linguist-generated=true
+*.tsbuildinfo       linguist-generated=true

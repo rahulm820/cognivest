@@ -1,0 +1,80 @@
+# Cognivest — developer task runner
+# Usage: make <target>   |   make help
+
+FRONTEND_DIR ?= frontend
+BACKEND_DIR  ?= backend
+
+.DEFAULT_GOAL := help
+
+.PHONY: help
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+
+# ---- Run -------------------------------------------------------------
+.PHONY: backend
+backend: ## Run the FastAPI backend locally (uvicorn)
+	cd $(BACKEND_DIR) && uvicorn src.main:app --reload
+
+.PHONY: frontend
+frontend: ## Run the Next.js frontend locally
+	cd $(FRONTEND_DIR) && pnpm dev
+
+# ---- Database --------------------------------------------------------
+.PHONY: migrate
+migrate: ## Apply Alembic migrations (alembic upgrade head)
+	cd $(BACKEND_DIR) && alembic upgrade head
+
+.PHONY: migration
+migration: ## Create a new migration: make migration m="message"
+	cd $(BACKEND_DIR) && alembic revision --autogenerate -m "$(m)"
+
+.PHONY: seed
+seed: ## Seed a demo ticker
+	cd $(BACKEND_DIR) && python -m scripts.seed
+
+# ---- Quality ---------------------------------------------------------
+.PHONY: lint
+lint: ## Lint backend + frontend
+	cd $(BACKEND_DIR) && ruff check . && black --check . && mypy src
+	cd $(FRONTEND_DIR) && pnpm lint && pnpm exec prettier --check .
+
+.PHONY: fmt
+fmt: ## Auto-format backend + frontend
+	cd $(BACKEND_DIR) && ruff check --fix . && black .
+	cd $(FRONTEND_DIR) && pnpm exec prettier --write .
+
+.PHONY: typecheck
+typecheck: ## Type-check backend (mypy) + frontend (tsc)
+	cd $(BACKEND_DIR) && mypy src
+	cd $(FRONTEND_DIR) && pnpm exec tsc --noEmit
+
+# ---- Workers ---------------------------------------------------------
+.PHONY: worker
+worker: ## Run a Celery worker locally
+	cd $(BACKEND_DIR) && celery -A src.workers.celery_app worker -l info
+
+.PHONY: beat
+beat: ## Run Celery Beat scheduler locally
+	cd $(BACKEND_DIR) && celery -A src.workers.celery_app beat -l info
+
+# ---- Ops scripts -----------------------------------------------------
+.PHONY: backfill
+backfill: ## Backfill a ticker: make backfill t=AAPL
+	cd $(BACKEND_DIR) && python scripts/backfill_ticker.py --ticker $(t)
+
+.PHONY: purge
+purge: ## Purge a Cognee dataset: make purge t=AAPL
+	cd $(BACKEND_DIR) && python scripts/purge_dataset.py --ticker $(t)
+
+# ---- Setup -----------------------------------------------------------
+.PHONY: install
+install: ## Install backend + frontend deps locally
+	cd $(BACKEND_DIR) && pip install -e ".[dev]"
+	cd $(FRONTEND_DIR) && pnpm install
+
+.PHONY: clean
+clean: ## Remove caches and build artifacts
+	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+	rm -rf $(BACKEND_DIR)/.pytest_cache $(BACKEND_DIR)/.mypy_cache $(BACKEND_DIR)/.ruff_cache
+	rm -rf $(FRONTEND_DIR)/.next $(FRONTEND_DIR)/coverage

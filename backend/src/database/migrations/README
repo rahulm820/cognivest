@@ -1,0 +1,10 @@
+Alembic async migration environment for Cognivest.
+
+Generate a migration:
+    alembic revision --autogenerate -m "message"
+Apply migrations:
+    alembic upgrade head
+
+The database URL comes from application settings (settings.DATABASE_URL); the
+value in alembic.ini is a placeholder. Versioned migration scripts live under
+versions/. See src/database/migrations/env.py for the async setup.

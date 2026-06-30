@@ -1,0 +1,44 @@
+# =====================================================================
+# Per-ticker collection schedule DEFAULTS (Celery beat).
+# Copy to scheduling.yaml (git-ignored) or seed Postgres from this.
+# Real per-company overrides live in the DB and win over these defaults.
+# Cron fields: "minute hour day-of-month month day-of-week" (UTC).
+# =====================================================================
+
+# Defaults applied to every watchlisted ticker unless overridden per company.
+defaults:
+  price:
+    # End-of-day on weekdays (mirrors PRICE_COLLECT_CRON in .env.example).
+    cron: "0 22 * * 1-5"
+    queue: price
+    enabled: true
+  news:
+    # Every 2 hours (mirrors NEWS_COLLECT_INTERVAL_HOURS=2).
+    cron: "0 */2 * * *"
+    queue: news
+    enabled: true
+  cognify:
+    # Build/refresh the graph after ingestion; decoupled onto its own queue.
+    cron: "30 */2 * * *"
+    queue: cognify
+    enabled: true
+
+# Optional per-ticker overrides (examples). Omitted tickers use `defaults`.
+tickers:
+  AAPL:
+    news:
+      cron: "0 * * * *"         # hourly news for a high-volume name
+  TSLA:
+    news:
+      cron: "*/30 * * * *"      # every 30 min
+  BRK.B:
+    price:
+      enabled: true
+    news:
+      enabled: false            # TODO: example of disabling a stream per ticker
+
+# Global toggles.
+options:
+  dedup_enabled: true           # mirrors INGEST_DEDUP_ENABLED
+  timezone: "UTC"               # beat schedules are evaluated in UTC
+  jitter_seconds: 30            # spread task fan-out to avoid vendor bursts

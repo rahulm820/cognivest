@@ -1,0 +1,28 @@
+# =====================================================================
+# Code owners — auto-requests reviews on matching paths.
+# TODO: replace placeholder @cognivest/* teams with real GitHub teams/users.
+# Last matching pattern wins, so order from general to specific.
+# =====================================================================
+
+# Default owners for everything.
+*                           @cognivest/maintainers
+
+# ---- Backend ----
+/backend/                   @cognivest/backend
+/backend/src/memory/        @cognivest/backend @cognivest/ai   # Cognee seam — extra scrutiny
+/backend/src/ai/            @cognivest/ai
+/backend/src/collectors/    @cognivest/backend
+
+# ---- Frontend ----
+/frontend/                  @cognivest/frontend
+
+# ---- Infra / Deploy / CI ----
+/docker/                    @cognivest/platform
+/infrastructure/            @cognivest/platform
+/deployment/                @cognivest/platform
+/.github/                   @cognivest/platform
+/config/                    @cognivest/platform @cognivest/backend
+
+# ---- Docs ----
+*.md                        @cognivest/maintainers
+/ARCHITECTURE.md            @cognivest/maintainers @cognivest/platform

@@ -1,0 +1,63 @@
+# ---- Secrets & env ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+*.local
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# ---- Node / Next.js ----
+node_modules/
+.pnpm-store/
+.next/
+out/
+.turbo/
+dist/
+*.tsbuildinfo
+.eslintcache
+coverage/
+playwright-report/
+test-results/
+
+# ---- Cognee local data (never commit raw memory) ----
+cognee/datasets/data/
+.cognee/
+*.lancedb
+*.duckdb
+*.kuzu
+
+# ---- Infra ----
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+charts/*.tgz
+
+# ---- IDE / OS ----
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- Logs ----
+logs/
+*.log

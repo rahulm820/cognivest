@@ -1,0 +1,3 @@
+# Keeps ai/eval/datasets/ in version control.
+# Evaluation fixture payloads (JSONL question sets) are git-ignored.
+# See ../README.md for the fixture format.

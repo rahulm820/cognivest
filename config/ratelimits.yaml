@@ -1,0 +1,65 @@
+# =====================================================================
+# Rate limits — protect downstream vendor quotas and LLM spend
+# (ARCHITECTURE.md §11). Two layers:
+#   - per_vendor: enforced inside collectors before outbound calls.
+#   - per_user:   enforced by API middleware on cost-sensitive endpoints.
+# Values are sane defaults; tune per plan/tier. Env vars override where noted.
+# =====================================================================
+
+# --------------------------------------------------------------------- #
+# Per-vendor limits (outbound). Keys match *_PROVIDER values in .env.example.
+# `burst` allows short spikes via a token bucket.
+# --------------------------------------------------------------------- #
+per_vendor:
+  market_data:
+    polygon:
+      requests_per_minute: 5      # TODO: match your Polygon plan
+      burst: 5
+    alphavantage:
+      requests_per_minute: 5
+      burst: 5
+    iex:
+      requests_per_minute: 100
+      burst: 20
+  news:
+    newsapi:
+      requests_per_minute: 60     # TODO: match your NewsAPI plan
+      requests_per_day: 1000
+      burst: 10
+    gdelt:
+      requests_per_minute: 30
+      burst: 5
+  web_search:
+    tavily:
+      requests_per_minute: 60
+      burst: 10
+    serper:
+      requests_per_minute: 100
+      burst: 20
+
+# --------------------------------------------------------------------- #
+# Per-user limits (inbound API). Mirrors QUERY_RATE_LIMIT_PER_MINUTE.
+# The query endpoint is LLM-backed, so it is the tightest limit.
+# --------------------------------------------------------------------- #
+per_user:
+  defaults:
+    requests_per_minute: 60
+    burst: 20
+  endpoints:
+    # POST /api/v1/companies/{ticker}/query  — LLM cost control.
+    query:
+      requests_per_minute: 20     # overridden by QUERY_RATE_LIMIT_PER_MINUTE env
+      requests_per_day: 500
+      burst: 5
+    # Watchlist CRUD and read endpoints can be looser.
+    watchlist_write:
+      requests_per_minute: 30
+      burst: 10
+
+# --------------------------------------------------------------------- #
+# Backend store for counters. In prod, Redis (shared across API pods).
+# --------------------------------------------------------------------- #
+backend:
+  store: redis                    # redis | memory (memory = dev/single-process only)
+  key_prefix: "ratelimit:"
+  # Connection comes from REDIS_URL (env); never hard-code it here.

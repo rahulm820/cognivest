@@ -1,0 +1,13 @@
+{
+  // Recommended extensions for working on Cognivest.
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "ms-python.black-formatter",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "hashicorp.terraform",
+    "redhat.vscode-yaml"
+  ]
+}

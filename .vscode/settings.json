@@ -1,0 +1,58 @@
+{
+  // ---- Editor ----
+  "editor.formatOnSave": true,
+  "editor.rulers": [100],
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  // ---- Python (backend) ----
+  // Point at the backend's virtualenv; adjust if you use a different path.
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  "python.analysis.typeCheckingMode": "basic",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["backend/tests"],
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "black-formatter.args": ["--line-length", "100"],
+  "ruff.lint.args": ["--config", "backend/pyproject.toml"],
+
+  // ---- TypeScript / JavaScript (frontend) ----
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "eslint.workingDirectories": [{ "directory": "frontend", "changeProcessCWD": true }],
+  "tailwindCSS.experimental.configFile": "frontend/tailwind.config.ts",
+
+  // ---- YAML / Terraform ----
+  "[yaml]": { "editor.defaultFormatter": "redhat.vscode-yaml" },
+  "[terraform]": { "editor.defaultFormatter": "hashicorp.terraform" },
+  "[terraform-vars]": { "editor.defaultFormatter": "hashicorp.terraform" },
+
+  // ---- Hide caches / build artifacts ----
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true,
+    "**/.pytest_cache": true,
+    "**/*.egg-info": true,
+    "**/.next": true,
+    "**/node_modules": true,
+    "**/.terraform": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/.venv": true,
+    "**/dist": true,
+    "**/.terraform": true,
+    "frontend/pnpm-lock.yaml": true
+  }
+}

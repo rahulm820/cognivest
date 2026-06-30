@@ -1,0 +1,52 @@
+# =====================================================================
+# Structured logging config (stdlib logging.config.dictConfig schema).
+# JSON in production for log aggregation; human-readable in development.
+# Loaded by backend + workers. LOG_LEVEL env var overrides the root level.
+# =====================================================================
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  json:
+    # Requires python-json-logger (add to backend deps when wiring this up). TODO.
+    "()": pythonjsonlogger.jsonlogger.JsonFormatter
+    format: "%(asctime)s %(levelname)s %(name)s %(message)s %(request_id)s"
+  console:
+    format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    datefmt: "%Y-%m-%dT%H:%M:%S%z"
+
+filters:
+  # TODO: implement a RequestIdFilter that injects the correlation id.
+  request_id:
+    "()": logging.Filter
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: console      # switch to `json` in production (see APP_ENV wiring)
+    stream: ext://sys.stdout
+
+loggers:
+  # Application logger root.
+  cognivest:
+    level: INFO
+    handlers: [console]
+    propagate: false
+  # Quiet noisy third-party loggers.
+  uvicorn.access:
+    level: WARNING
+    handlers: [console]
+    propagate: false
+  sqlalchemy.engine:
+    level: WARNING
+    handlers: [console]
+    propagate: false
+  celery:
+    level: INFO
+    handlers: [console]
+    propagate: false
+
+root:
+  level: INFO          # overridden at startup by the LOG_LEVEL env var
+  handlers: [console]

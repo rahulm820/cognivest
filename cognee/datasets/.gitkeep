@@ -1,0 +1,3 @@
+# Keeps cognee/datasets/ in version control.
+# Actual Cognee dataset data is git-ignored and lives in COGNEE_DATA_DIR.
+# See README.md in this directory.

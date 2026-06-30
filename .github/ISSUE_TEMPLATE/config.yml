@@ -1,0 +1,9 @@
+# Issue template chooser config.
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/OWNER/cognivest/security/advisories/new   # TODO: set repo
+    about: "Please report security issues privately — see SECURITY.md. Do NOT open a public issue."
+  - name: Question / discussion
+    url: https://github.com/OWNER/cognivest/discussions   # TODO: set repo
+    about: "Ask questions and discuss ideas in GitHub Discussions."
