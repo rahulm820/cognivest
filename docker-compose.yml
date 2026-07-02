@@ -1,0 +1,107 @@
+# =====================================================================
+# Cognivest — local development stack.
+#
+#   make up      # build + start everything in the background
+#   make down    # stop and remove containers
+#   make logs    # tail logs
+#
+# Prerequisite: copy the env template first — `cp .env.example .env`.
+# The template already targets the compose service hostnames (postgres,
+# redis), so no edits are required to boot the stack (fill in real vendor
+# / LLM keys only when you reach the phases that need them).
+#
+# Services: postgres, redis, backend (API), worker (Celery), beat (Celery
+# beat), frontend (Next.js dev). Backend task/business logic is Phase-0
+# stubs — the API answers /health; worker/beat connect to Redis. That is
+# the M0 acceptance surface.
+# =====================================================================
+
+# Shared config for the three backend roles (API, worker, beat): same image,
+# same env, same source bind-mount, same dependency on healthy datastores.
+x-backend-common: &backend-common
+  build:
+    context: .
+    dockerfile: docker/backend.Dockerfile
+  image: cognivest-backend:dev
+  env_file: .env
+  volumes:
+    # Bind-mount source for hot reload. Backend deps live in system
+    # site-packages (not /app), so the mount does not clobber them.
+    - ./backend:/app
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # $$ escapes the compose variable so the shell expands it at runtime.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    <<: *backend-common
+    # Default image CMD already runs uvicorn --reload; stated here for clarity.
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *backend-common
+    command: ["celery", "-A", "src.workers.celery_app", "worker", "-l", "info"]
+
+  beat:
+    <<: *backend-common
+    command: ["celery", "-A", "src.workers.celery_app", "beat", "-l", "info"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: cognivest-frontend:dev
+    env_file: .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      # Anonymous volume keeps container-installed node_modules from being
+      # shadowed by the host bind mount above.
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

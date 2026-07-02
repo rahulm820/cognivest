@@ -1,0 +1,49 @@
+# Keep the Docker build context small and deterministic. The build context is
+# the repository root (see docker-compose.yml), so exclude everything a build
+# does not need — installed deps, build artifacts, VCS, secrets, and local data.
+
+# ---- VCS / IDE / OS ----
+.git/
+.github/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- Secrets & env (never bake into an image) ----
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# ---- Python ----
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+
+# ---- Node / Next.js ----
+**/node_modules/
+**/.pnpm-store/
+**/.next/
+**/out/
+**/coverage/
+**/*.tsbuildinfo
+
+# ---- Cognee local data ----
+cognee/datasets/data/
+.cognee/
+
+# ---- Docs / misc not needed at build time ----
+docs/
+*.md
+!backend/README.md

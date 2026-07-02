@@ -25,6 +25,10 @@ coverage.xml
 htmlcov/
 .tox/
 
+# ---- Celery (runtime artifacts written into the bind-mounted backend/) ----
+celerybeat-schedule*
+celerybeat.pid
+
 # ---- Node / Next.js ----
 node_modules/
 .pnpm-store/

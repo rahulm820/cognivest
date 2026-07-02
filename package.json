@@ -1,0 +1,14 @@
+{
+  "name": "cognivest",
+  "version": "1.0.0",
+  "description": "> Per-company financial intelligence platform powered by [Cognee](https://www.cognee.ai/) — correlating **price action** with **news/web narrative** in a unified, per-ticker knowledge graph.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
