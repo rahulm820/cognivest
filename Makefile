@@ -11,7 +11,31 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-# ---- Run -------------------------------------------------------------
+# ---- Docker stack ----------------------------------------------------
+.PHONY: up
+up: ## Build + start the full local stack (postgres, redis, backend, worker, beat, frontend)
+	docker compose up --build -d
+	@echo "Backend:  http://localhost:8000/docs   (health: /health)"
+	@echo "Frontend: http://localhost:3000"
+
+.PHONY: down
+down: ## Stop and remove the local stack containers
+	docker compose down
+
+.PHONY: restart
+restart: ## Restart the local stack (down + up)
+	docker compose down
+	docker compose up --build -d
+
+.PHONY: logs
+logs: ## Tail logs from the local stack (Ctrl-C to stop)
+	docker compose logs -f
+
+.PHONY: ps
+ps: ## Show status of the local stack services
+	docker compose ps
+
+# ---- Run (native, without Docker) ------------------------------------
 .PHONY: backend
 backend: ## Run the FastAPI backend locally (uvicorn)
 	cd $(BACKEND_DIR) && uvicorn src.main:app --reload
