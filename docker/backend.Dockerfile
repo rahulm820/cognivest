@@ -33,6 +33,11 @@ RUN pip install -r requirements.txt
 # ./backend, so edits on the host hot-reload inside the container.
 COPY backend/ ./
 
+# Operational scripts (backfill/purge/seed) live at the repo root, not under
+# backend/. Bake them in so standalone/prod containers can run them; the dev
+# compose additionally bind-mounts ./scripts over /app/scripts for hot editing.
+COPY scripts/ ./scripts/
+
 EXPOSE 8000
 
 # Default role: the FastAPI API with autoreload. Worker/beat override `command`.

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ARCHITECTURE.md` (full Software Architecture Document) and `CLAUDE.md` (AI context).
 - Docker Compose local development stack (postgres, redis, backend, worker, beat, frontend).
 - Root tooling: Makefile, pre-commit, lint/format/type configs, `.env.example`.
+- Initial Alembic migration for the operational schema (companies, users, watchlist_items,
+  ingestion_jobs, ingested_items, query_log) so `make migrate` provisions the database from
+  empty. Adds the missing `script.py.mako` revision template.
 
 ### Notes
 - Business logic is intentionally **not** implemented in this phase. Placeholders raise

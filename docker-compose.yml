@@ -28,6 +28,9 @@ x-backend-common: &backend-common
     # Bind-mount source for hot reload. Backend deps live in system
     # site-packages (not /app), so the mount does not clobber them.
     - ./backend:/app
+    # Repo-root scripts (backfill/purge/seed) mounted in so `make seed` et al.
+    # can run in-container; the ./backend mount above does not include them.
+    - ./scripts:/app/scripts
   depends_on:
     postgres:
       condition: service_healthy
