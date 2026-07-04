@@ -131,6 +131,30 @@ Full detail: [docs/memory-architecture.md](./docs/memory-architecture.md).
 
 ---
 
+## 🔑 LLM & embedding configuration
+
+Cognee reads its LLM and embedding settings from these environment variables (its own
+pydantic field names — see [`.env.example`](./.env.example)). **A single LLM provider
+(Gemini) powers both graph construction and answer generation.**
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | LLM provider Cognee uses for `cognify()` extraction + answer generation — `gemini`. |
+| `LLM_MODEL` | litellm-format model string — `gemini/gemini-2.5-flash`. |
+| `LLM_API_KEY` | API key for the LLM provider (e.g. a Google AI / Gemini key). |
+| `EMBEDDING_PROVIDER` | Embedding backend — `fastembed` (local ONNX, no API key, no cost). |
+| `EMBEDDING_MODEL` | Embedding model — `sentence-transformers/all-MiniLM-L6-v2`. |
+| `EMBEDDING_DIMENSIONS` | Vector width; **must** match the model — `384`. Do not omit. |
+
+**Manual fallback if the Gemini key is quota-exhausted.** Swap `LLM_API_KEY` for a second
+key from a **different Google Cloud project** (quotas are per-project, so a key in the same
+project shares the exhausted quota) and restart. To fall back to a **different provider**
+(e.g. Groq), swap `LLM_PROVIDER`, `LLM_MODEL`, and `LLM_API_KEY` together. Embeddings stay
+local via fastembed, so your existing vectors are unaffected by any LLM swap — no re-cognify
+needed. (Changing `EMBEDDING_*`, by contrast, requires a prune + re-cognify.)
+
+---
+
 ## 🗺️ Roadmap
 
 | Phase | Scope |
