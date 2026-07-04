@@ -1,29 +1,57 @@
 #!/usr/bin/env python3
-"""Enqueue a historical backfill for a ticker.
+"""Backfill a ticker: fetch prices + news → Cognee (add + cognify). Celery-free.
 
-Schedules collector jobs (price + news) over a historical window onto the Celery
-queues; cognify follows on its own queue. Idempotent: dedup runs before
-cognee.add(), so re-running a backfill is safe.
+Runs the collectors synchronously (no queue) so the demo path has no Celery
+dependency. Idempotent: content-hash dedup runs before ``cognee.add()``, so
+re-running a backfill only ingests genuinely new items.
 
-Scaffold phase: body is a stub marked ``# TODO(phase-2)``.
-See scripts/README.md and docs/backend.md.
+    docker compose exec backend python -m scripts.backfill_ticker --ticker AAPL
+    # or: make backfill t=AAPL
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 
+from src.collectors.news_collector import NewsCollector
+from src.collectors.price_collector import PriceCollector
+from src.database.session import get_sessionmaker
+from src.repositories.company_repo import CompanyRepository
+from src.repositories.ingestion_repo import IngestionRepository
+from src.services.collector_service import CollectorService
+from src.services.memory_service import get_memory_service
 
-def backfill(ticker: str, days: int, news: bool, price: bool) -> None:
-    """Enqueue backfill jobs for ``ticker`` over the trailing ``days`` window.
 
-    TODO(phase-2): resolve/validate the company, then enqueue price and/or news
-    collector tasks for the window via the workers (Celery). Dedup runs inside
-    each task before cognee.add(); cognify is enqueued separately. Memory stays
-    scoped to f"company_{ticker}".
-    """
-    raise NotImplementedError("TODO(phase-2): enqueue backfill collector jobs")
+async def backfill(ticker: str, *, days: int, news: bool, price: bool) -> int:
+    """Fetch + ingest prices and/or news for ``ticker``. Returns new-item count."""
+    ticker = ticker.upper()
+    sessionmaker = get_sessionmaker()
+    total = 0
+    async with sessionmaker() as session:
+        company = await CompanyRepository(session).get_or_create(ticker)
+        service = CollectorService(get_memory_service(), IngestionRepository(session))
+
+        if price:
+            count = await service.run_for_ticker(
+                ticker, PriceCollector(days=days), company_id=company.id
+            )
+            print(f"  price: {count} new item(s)")
+            total += count
+
+        if news:
+            count = await service.run_for_ticker(
+                ticker,
+                NewsCollector(company_name=company.name, days=days),
+                company_id=company.id,
+            )
+            print(f"  news:  {count} new item(s)")
+            total += count
+
+        await session.commit()
+    print(f"Done: {total} new item(s) ingested into company_{ticker}.")
+    return total
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -43,12 +71,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     ticker = args.ticker.upper()
-    print(f"Enqueuing backfill for {ticker} ({args.days}d)...")
-    backfill(
-        ticker=ticker,
-        days=args.days,
-        news=not args.no_news,
-        price=not args.no_price,
+    print(f"Backfilling {ticker} ({args.days}d)...")
+    asyncio.run(
+        backfill(
+            ticker,
+            days=args.days,
+            news=not args.no_news,
+            price=not args.no_price,
+        )
     )
     return 0
 

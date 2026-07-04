@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.collectors.price_collector import fetch_price_bars
 from src.database.session import get_db
 from src.memory.dataset_naming import normalize_ticker
 from src.middleware.auth_middleware import CurrentUser, get_current_user
@@ -21,6 +22,23 @@ from src.schemas.query import QueryRequest, QueryResponse
 from src.services.memory_service import get_memory_service
 
 router = APIRouter(prefix="/companies", tags=["companies"])
+
+
+def _days_from_range(range_str: str) -> int:
+    """Parse a lookback string ('30d', '3mo', '1y') to a day count (default 30)."""
+    text = range_str.strip().lower()
+    try:
+        if text.endswith("mo"):
+            return int(text[:-2] or 1) * 30
+        if text.endswith("y"):
+            return int(text[:-1] or 1) * 365
+        if text.endswith("m"):
+            return int(text[:-1] or 1) * 30
+        if text.endswith("d"):
+            return int(text[:-1] or 30)
+    except ValueError:
+        pass
+    return 30
 
 
 @router.get("", response_model=list[CompanyOut])
@@ -70,11 +88,18 @@ async def get_price(
 ) -> PriceSeriesOut:
     """Return the price series for a ticker over a lookback window.
 
+    Served on-demand from the market-data vendor (yfinance) — there is no price
+    table. An unknown ticker / no data yields an empty ``bars`` list, not an error.
+
     Raises:
-        NotImplementedError: Always, in the scaffold phase.
+        HTTPException: 400 if the ticker fails format validation.
     """
-    # TODO(phase-2): company/price service -> PriceSeriesOut
-    raise NotImplementedError("TODO(phase-2): implement companies.get_price")
+    try:
+        normalized = normalize_ticker(ticker)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    bars = await fetch_price_bars(normalized, days=_days_from_range(range))
+    return PriceSeriesOut(ticker=normalized, bars=bars)
 
 
 @router.post("/{ticker}/query", response_model=QueryResponse, dependencies=[Depends(rate_limit)])

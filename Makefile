@@ -84,8 +84,8 @@ beat: ## Run Celery Beat scheduler locally
 
 # ---- Ops scripts -----------------------------------------------------
 .PHONY: backfill
-backfill: ## Backfill a ticker: make backfill t=AAPL
-	cd $(BACKEND_DIR) && python scripts/backfill_ticker.py --ticker $(t)
+backfill: ## Backfill a ticker into Postgres + cognee: make backfill t=AAPL
+	docker compose exec backend python -m scripts.backfill_ticker --ticker $(t)
 
 .PHONY: purge
 purge: ## Purge a Cognee dataset: make purge t=AAPL
