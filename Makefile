@@ -54,8 +54,8 @@ migration: ## Create a new migration: make migration m="message"
 	cd $(BACKEND_DIR) && alembic revision --autogenerate -m "$(m)"
 
 .PHONY: seed
-seed: ## Seed a demo ticker
-	cd $(BACKEND_DIR) && python -m scripts.seed
+seed: ## Seed demo companies + a demo user into the running stack's Postgres
+	docker compose exec backend python -m scripts.seed
 
 # ---- Quality ---------------------------------------------------------
 .PHONY: lint
