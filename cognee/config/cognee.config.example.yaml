@@ -1,9 +1,12 @@
-# Cognee configuration — EXAMPLE (placeholder values only)
+# Cognee configuration — EXAMPLE (documentation only)
 # ---------------------------------------------------------------------------
-# This is an illustrative template. Real values are env-driven (see
-# ../../docs/environment.md) and, in production, come from the secrets manager.
-# Do NOT commit real credentials. The Cognee SDK is used only inside
-# backend/src/memory/cognee_client.py (the single seam).
+# ⚠️ Cognee does NOT read this YAML file. Its config is env-driven pydantic
+# BaseSettings (docs/spike-cognee-1.2.2.md §3) — the real values live in
+# `.env` (see ../../.env.example) and, in production, the secrets manager.
+# This file exists purely to document the intended stack in one place; it
+# mirrors the spike-verified configuration. Do NOT commit real credentials.
+# The Cognee SDK is used only inside backend/src/memory/cognee_client.py
+# (the single seam).
 # ---------------------------------------------------------------------------
 
 # Vector store: embeddings of every ingested chunk, namespaced per dataset.
@@ -20,15 +23,18 @@ graph_db:
   # password: "${COGNEE_GRAPH_DB_PASSWORD}"
 
 # Embedding model used during cognify() to embed chunks (and queries at search time).
+# Verified stack: local fastembed (ONNX, no API key, 384-dim).
 embedding:
-  provider: anthropic          # provider for embeddings (env: COGNEE_LLM_PROVIDER)
-  model: "text-embedding-placeholder"
+  provider: fastembed          # (env: EMBEDDING_PROVIDER)
+  model: "sentence-transformers/all-MiniLM-L6-v2"  # (env: EMBEDDING_MODEL)
+  dimensions: 384              # (env: EMBEDDING_DIMENSIONS) — MUST match the model
 
-# LLM provider Cognee uses internally for extraction during cognify().
+# LLM Cognee uses for extraction during cognify() AND for answer generation
+# (completion search types). Single provider: Gemini via litellm.
 llm:
-  provider: anthropic          # (env: COGNEE_LLM_PROVIDER)
-  model: "claude-opus-4-8"     # (env: LLM_MODEL)
-  # api_key: "${ANTHROPIC_API_KEY}"
+  provider: gemini             # (env: LLM_PROVIDER)
+  model: "gemini/gemini-2.5-flash"   # (env: LLM_MODEL) — litellm format
+  # api_key: "${LLM_API_KEY}"
 
 # On-disk data directory (git-ignored). NEVER commit dataset data.
 data:
