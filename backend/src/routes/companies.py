@@ -6,12 +6,19 @@ Auth (user) is required; the query path additionally applies the rate limiter.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+from uuid import uuid4
 
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.database.session import get_db
+from src.memory.dataset_naming import normalize_ticker
 from src.middleware.auth_middleware import CurrentUser, get_current_user
 from src.middleware.rate_limit import rate_limit
+from src.repositories.company_repo import CompanyRepository
 from src.schemas.company import CompanyOut, PriceSeriesOut, TickerCreate
 from src.schemas.query import QueryRequest, QueryResponse
+from src.services.memory_service import get_memory_service
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -75,13 +82,54 @@ async def query_company(
     ticker: str,
     payload: QueryRequest,
     user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ) -> QueryResponse:
     """Answer a natural-language question scoped to a company.
 
-    Wraps ``memory_service.search`` + answer formatting (rate-limited per user).
+    Single-LLM: the answer comes straight from Cognee's ``GRAPH_COMPLETION`` search via
+    :class:`MemoryService` (no separate answer-formatter LLM). Rate-limited per user.
 
-    Raises:
-        NotImplementedError: Always, in the scaffold phase.
+    Error contract:
+      * 400 — ticker fails format validation (``normalize_ticker``).
+      * 404 — company not on record. Wired to ``CompanyRepository.get_by_ticker``; that
+        method is a phase-1 stub today, so the call is guarded (see below) and the route
+        stays verifiable without 500-ing until issue #1 lands.
+      * 200 — including the honest "no data ingested yet" answer when the dataset is
+        empty (or the Cognee seam is still a scaffold stub — issue #4).
     """
-    # TODO(phase-4): query_service.answer(user_id=user.id, ticker=ticker, request=payload)
-    raise NotImplementedError("TODO(phase-4): implement companies.query_company")
+    # 1. Validate ticker format (400 on bad input) before any I/O.
+    try:
+        normalized = normalize_ticker(ticker)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    # 2. Existence guard (404). CompanyRepository.get_by_ticker is a phase-1 stub that
+    #    raises NotImplementedError today; guard it so the route never 500s on the stub.
+    #    TODO(#1): drop the NotImplementedError fallthrough once get_by_ticker is real.
+    try:
+        company = await CompanyRepository(db).get_by_ticker(normalized)
+        if company is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"company {normalized} is not on record",
+            )
+    except NotImplementedError:
+        pass
+
+    # 3. Session identity for future per-user memory (#10/#11): prefer the caller-supplied
+    #    X-User-Id, else mint a per-request id. Threaded into MemoryService (held there).
+    session_id = x_user_id or uuid4().hex
+
+    # 4. Single-LLM answer via the memory seam.
+    result = await get_memory_service().answer(
+        normalized,
+        payload.question,
+        date_range=payload.date_range,
+        session_id=session_id,
+    )
+    return QueryResponse(
+        answer=result.answer,
+        citations=result.citations,
+        graph_snippet=result.graph_snippet,
+    )
