@@ -74,17 +74,17 @@ class MemoryService:
             ticker: Company ticker; scoped to ``company_{ticker}`` by the seam.
             question: The user's natural-language question.
             date_range: Optional date filter, forwarded to the seam as opaque filters.
-            session_id: Per-user session identity for future per-user memory
-                (issues #10/#11). Held here for now — the frozen seam signatures do not
-                yet accept it. TODO(seam-#4): forward to ``self._client.search`` once the
-                additive ``session_id`` kwarg lands on the seam.
+            session_id: Per-user session identity for session-aware retrieval / feedback
+                (issues #10/#11). Forwarded to the seam's ``search`` so Cognee can key
+                its session cache; ``None`` runs a stateless query.
             top_k: Retrieval breadth passed to the seam.
 
         Returns:
             A :class:`MemoryAnswerOut` (answer + honest citations + graph snippet).
         """
-        _ = session_id  # TODO(seam-#4): forward once the seam accepts session_id.
-        results = await self._safe_search(ticker, question, top_k=top_k, date_range=date_range)
+        results = await self._safe_search(
+            ticker, question, top_k=top_k, date_range=date_range, session_id=session_id
+        )
         answer_text = self._extract_answer(results)
         if not answer_text:
             return MemoryAnswerOut(answer=self._no_data_answer(ticker), citations=[])
@@ -166,6 +166,7 @@ class MemoryService:
         *,
         top_k: int,
         date_range: DateRange | None,
+        session_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Call the seam, tolerating the scaffold stub so the query path never 500s.
 
@@ -175,7 +176,9 @@ class MemoryService:
         """
         filters = self._filters_from_date_range(date_range)
         try:
-            results = await self._client.search(ticker, query, top_k=top_k, filters=filters)
+            results = await self._client.search(
+                ticker, query, top_k=top_k, session_id=session_id, filters=filters
+            )
         except NotImplementedError:
             logger.warning("memory.seam_not_implemented", ticker=ticker, op="search")
             return []

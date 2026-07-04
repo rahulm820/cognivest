@@ -29,16 +29,21 @@ Implemented against **cognee 1.2.2** (pinned). API shape per the spike:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # NOTE: This is the ONLY permitted Cognee import in the codebase.
 # It is wrapped so the scaffold imports cleanly even if the SDK is absent.
 try:  # pragma: no cover - import guard for scaffold environments
     import cognee  # type: ignore[import-untyped]
+    from cognee.modules.data.exceptions import (  # type: ignore[import-untyped]
+        DatasetNotFoundError,
+    )
     from cognee.modules.search.types import SearchType  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
     cognee = None  # type: ignore[assignment]
     SearchType = None  # type: ignore[assignment]
+    DatasetNotFoundError = None  # type: ignore[assignment,misc]
 
 from src.config.logging import get_logger
 from src.memory.dataset_naming import dataset_name
@@ -50,6 +55,60 @@ logger = get_logger(__name__)
 # generated answer in ``result["search_result"]``. Kept internal so callers never
 # depend on Cognee's ``SearchType``.
 _SEARCH_TYPE = SearchType.GRAPH_COMPLETION if SearchType is not None else None
+
+# Provenance header markers. Citation fields are embedded as a delimited, terminated
+# header at the top of each ingested document (Cognee's ``add`` has no metadata
+# kwarg). The explicit closing marker matters: Cognee's Evidence block collapses all
+# whitespace in the chunk snippet, so without a terminator the final ``title=`` field
+# would bleed into the document body. Keep the emitter (``_with_provenance``) and the
+# parser (``_parse_provenance``) in sync via these two constants.
+_PROVENANCE_OPEN = "[PROVENANCE]"
+_PROVENANCE_CLOSE = "[/PROVENANCE]"
+
+# One provenance span: everything between the open and close markers (DOTALL so a span
+# that survived across a newline still matches).
+_PROVENANCE_RE = re.compile(
+    re.escape(_PROVENANCE_OPEN) + r"(.*?)" + re.escape(_PROVENANCE_CLOSE),
+    re.DOTALL,
+)
+
+# The ``Evidence:`` header Cognee appends (on its own line) when ``include_references``
+# is set — see ``modules/retrieval/utils/references.py`` (``EVIDENCE_HEADER``). We split
+# the answer here to keep the returned prose clean.
+_EVIDENCE_HEADER = "Evidence:"
+_EVIDENCE_SPLIT_RE = re.compile(rf"(?m)^[ \t]*{re.escape(_EVIDENCE_HEADER)}[ \t]*$")
+
+# Provenance fields we recognize; only these keys are lifted into a citation.
+_CITATION_FIELDS = ("title", "source_url", "published_at")
+
+
+def _is_no_data_error(exc: BaseException) -> bool:
+    """True when a search error means 'nothing ingested yet', not a real fault.
+
+    ``cognee.search`` surfaces "no data" in three shapes on a fresh/empty store, all of
+    which we map to an empty result so the query path returns an honest "no data yet"
+    200 instead of a 500 (spike-verified, fact (a)):
+
+    1. Unknown/empty dataset -> ``DatasetNotFoundError("No datasets found.")``.
+    2. Cognee's own precondition guard converts ``DatabaseNotCreatedError`` /
+       ``UserNotFoundError`` into a ``CogneeValidationError`` named
+       ``"SearchPreconditionError"`` (matched by ``.name`` to avoid importing it).
+    3. Deeper fresh-store case: that guard does NOT catch the raw
+       ``OperationalError: unable to open database file`` raised by ``get_default_user``
+       when the sqlite store was never created. We recognize it structurally (class
+       name + message) so we do not import sqlalchemy into the seam, and so genuinely
+       broken stores (locked / corrupt DB) still propagate as a real 500.
+
+    Any other error is a genuine fault and must keep propagating.
+    """
+    if DatasetNotFoundError is not None and isinstance(exc, DatasetNotFoundError):
+        return True
+    if getattr(exc, "name", None) in {"SearchPreconditionError", "DatasetNotFoundError"}:
+        return True
+    return (
+        type(exc).__name__ == "OperationalError"
+        and "unable to open database file" in str(exc)
+    )
 
 
 def _require_sdk() -> None:
@@ -76,6 +135,12 @@ class CogneeClient:
         (source_url, published_at, ...) are embedded as a machine-parseable header
         at the top of the ingested text and recovered from search results. See the
         "Metadata attachment" note in ``docs/spike-cognee-1.2.2.md``.
+
+        The header is bounded by an explicit ``[/PROVENANCE]`` terminator. Cognee's
+        Evidence block (``include_references=True``) renders each cited chunk as a
+        whitespace-collapsed snippet, so without the terminator the trailing
+        ``title=`` value would run straight into the document body. The terminator
+        gives :meth:`_parse_provenance` a clean right boundary for every field.
         """
         if not metadata:
             return content
@@ -86,7 +151,8 @@ class CogneeClient:
         ]
         if not fields:
             return content
-        return "[PROVENANCE] " + " | ".join(fields) + "\n\n" + content
+        header = f"{_PROVENANCE_OPEN} " + " | ".join(fields) + f" {_PROVENANCE_CLOSE}"
+        return header + "\n\n" + content
 
     @staticmethod
     def _result_to_dict(result: Any) -> dict[str, Any]:
@@ -104,6 +170,104 @@ class CogneeClient:
             data = {"search_result": result}
         if data.get("dataset_id") is not None:
             data["dataset_id"] = str(data["dataset_id"])
+        return data
+
+    # ------------------------------------------------------- reference parsing
+    #
+    # Cognee 1.2.2's ``include_references=True`` does NOT return a structured
+    # references key. For ``GRAPH_COMPLETION`` (str answers) it appends a free-text
+    # ``Evidence:`` block into the answer string, whose bullets quote the cited
+    # chunks — including the ``[PROVENANCE] … [/PROVENANCE]`` header we embed at
+    # ingestion. So we recover citations by (1) splitting the Evidence block out of
+    # the answer prose and (2) parsing the provenance headers back into dicts. These
+    # helpers are pure and unit-testable.
+
+    @staticmethod
+    def _split_evidence(text: str) -> tuple[str, str]:
+        """Split an answer string into (clean prose, evidence block).
+
+        Cognee appends the Evidence block as ``"<answer>\\n\\nEvidence:\\n- …"``. We
+        cut at the ``Evidence:`` header line so the returned answer stays clean prose.
+        If there is no Evidence block the whole string is the answer.
+        """
+        parts = _EVIDENCE_SPLIT_RE.split(text, maxsplit=1)
+        if len(parts) == 2:
+            return parts[0].rstrip(), parts[1]
+        return text, ""
+
+    @staticmethod
+    def _strip_provenance(text: str) -> str:
+        """Remove any residual ``[PROVENANCE] … [/PROVENANCE]`` spans from prose.
+
+        Belt-and-suspenders: provenance normally lives only inside the (stripped)
+        Evidence block, but if the header were ever echoed into the answer this keeps
+        the returned prose clean.
+        """
+        return _PROVENANCE_RE.sub("", text).strip()
+
+    @staticmethod
+    def _parse_provenance(text: str) -> list[dict[str, str]]:
+        """Parse ``[PROVENANCE] key=value | … [/PROVENANCE]`` spans into dicts.
+
+        Returns one ``{title, source_url, published_at}`` dict per span, keeping only
+        recognized, non-empty fields. Only fully-terminated spans are parsed: a header
+        whose ``[/PROVENANCE]`` was truncated away by Cognee's snippet cap is skipped
+        rather than emitted with a body-polluted ``title`` — we never fabricate fields.
+        """
+        if not text or _PROVENANCE_OPEN not in text:
+            return []
+        refs: list[dict[str, str]] = []
+        for span in _PROVENANCE_RE.findall(text):
+            fields: dict[str, str] = {}
+            for segment in span.split("|"):
+                key, sep, value = segment.partition("=")
+                if not sep:
+                    continue
+                key = key.strip()
+                value = value.strip()
+                if key in _CITATION_FIELDS and value:
+                    fields.setdefault(key, value)
+            ref = {key: fields[key] for key in _CITATION_FIELDS if key in fields}
+            if ref:
+                refs.append(ref)
+        return refs
+
+    @staticmethod
+    def _dedupe_references(refs: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Drop duplicate citations, keyed by source_url (falling back to title)."""
+        seen: set[str] = set()
+        deduped: list[dict[str, str]] = []
+        for ref in refs:
+            key = ref.get("source_url") or ref.get("title")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(ref)
+        return deduped
+
+    def _attach_references(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Clean the answer text and attach parsed citations under ``references``.
+
+        For every ``search_result`` string: parse its provenance headers, strip the
+        Evidence block (and any stray provenance) out of the answer prose, and collect
+        the citations. The deduped list is exposed under the ``references`` key that
+        ``MemoryService._extract_citations`` reads. Non-string payloads are left as-is.
+        """
+        search_result = data.get("search_result")
+        if not isinstance(search_result, list):
+            return data
+        cleaned: list[Any] = []
+        references: list[dict[str, str]] = []
+        for entry in search_result:
+            if not isinstance(entry, str):
+                cleaned.append(entry)
+                continue
+            references.extend(self._parse_provenance(entry))
+            answer_text, _evidence = self._split_evidence(entry)
+            cleaned.append(self._strip_provenance(answer_text))
+        data["search_result"] = cleaned
+        if references:
+            data["references"] = self._dedupe_references(references)
         return data
 
     async def add(
@@ -148,6 +312,17 @@ class CogneeClient:
         Uses ``SearchType.GRAPH_COMPLETION`` (spike-verified). Cognee 1.2.2 has no
         ``dataset_name`` or ``filters`` param on ``search`` — scope is ``datasets=``.
 
+        Calls Cognee with ``include_references=True`` and post-processes each result:
+        the free-text ``Evidence:`` block is split OUT of the answer prose and the
+        embedded ``[PROVENANCE]`` headers are parsed into structured citations exposed
+        under a ``references`` key (Cognee 1.2.2 returns no structured references key
+        of its own). The returned ``search_result`` text is clean prose.
+
+        No-data resilience: an unknown/empty dataset or a fresh, uninitialized store
+        makes Cognee raise (see :func:`_is_no_data_error` for the exact signatures);
+        we map those to ``[]`` so the query path returns an honest "no data yet" 200
+        rather than a 500. Every other error is re-raised.
+
         Args:
             ticker: The company ticker; resolved to ``company_{ticker}``.
             query: The natural-language query.
@@ -158,21 +333,32 @@ class CogneeClient:
                 filter; passing filters is a no-op here — see the spike doc.
 
         Returns:
-            A list of result dicts (``search_result`` payload + dataset provenance).
+            A list of result dicts (clean ``search_result`` prose + dataset provenance
+            + a ``references`` list of citation dicts when provenance was recovered).
+            Empty when the ticker's dataset has no ingested data yet.
         """
         _require_sdk()
         dataset = dataset_name(ticker)
         if filters:
             logger.debug("cognee.search.filters_ignored", dataset=dataset, filters=filters)
         logger.debug("cognee.search", dataset=dataset, top_k=top_k)
-        results = await cognee.search(
-            query_text=query,
-            query_type=_SEARCH_TYPE,
-            datasets=[dataset],
-            top_k=top_k,
-            session_id=session_id,
-        )
-        return [self._result_to_dict(r) for r in results]
+        try:
+            results = await cognee.search(
+                query_text=query,
+                query_type=_SEARCH_TYPE,
+                datasets=[dataset],
+                top_k=top_k,
+                session_id=session_id,
+                include_references=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - re-raised unless it is a no-data signal
+            # Only the specifically-recognized "no data ingested yet" signatures are
+            # swallowed (-> honest 200); every genuine fault is re-raised (-> 500).
+            if _is_no_data_error(exc):
+                logger.info("cognee.search.no_data", dataset=dataset)
+                return []
+            raise
+        return [self._attach_references(self._result_to_dict(r)) for r in results]
 
     async def recall(
         self,
