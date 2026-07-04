@@ -62,6 +62,21 @@ class MemoryContextOut(BaseModel):
     graph_snippet: GraphSnippet = Field(default_factory=GraphSnippet)
 
 
+class MemoryAnswerOut(BaseModel):
+    """A composed, grounded answer to a company query.
+
+    Single-LLM design: the ``answer`` text is produced directly by Cognee's
+    ``GRAPH_COMPLETION`` search (no separate answer-formatter LLM). Distinct from
+    ``MemorySearchOut`` (ranked hits, no composed answer) and ``MemoryContextOut``
+    (a pre-LLM context block) — neither fits a single grounded answer, hence this type.
+    Maps 1:1 onto ``schemas.query.QueryResponse``.
+    """
+
+    answer: str
+    citations: list[Citation] = Field(default_factory=list)
+    graph_snippet: GraphSnippet = Field(default_factory=GraphSnippet)
+
+
 class MemoryReflection(BaseModel):
     """Request to trigger a consolidation/cognify reflection pass."""
 
