@@ -4,115 +4,119 @@ Every variable in [`.env.example`](../.env.example). Copy that file to `.env` (g
 it in — see [setup.md](./setup.md). **Never commit `.env` or any secret** ([CLAUDE.md §14](../CLAUDE.md)).
 When you add a new variable, update **both** `.env.example` and this table.
 
-> "Required?" = required for the app to function in a real run. Many vendor keys are not needed for
-> the Phase-0 scaffold but are required once the corresponding feature is implemented.
+> **To boot the stack you only need one real value: `LLM_API_KEY`** (a Gemini key). The compose
+> template already targets the service hostnames, so Postgres/Redis need no edits. Vendor keys and the
+> JWT/OAuth block are for features that are stubs today — see the "Status" notes.
+
+> **Upgrading an older checkout?** Re-copy `cp .env.example .env`. Stale `.env` files carry a dead
+> Anthropic/`claude-opus` LLM config that no longer works.
 
 ## App
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `APP_ENV` | Runtime environment | `development` | Yes |
-| `APP_NAME` | Application name | `cognivest` | Yes |
-| `LOG_LEVEL` | Log verbosity | `INFO` | Yes |
-| `API_V1_PREFIX` | API base path | `/api/v1` | Yes |
-| `BACKEND_CORS_ORIGINS` | Allowed frontend origins (CORS) | `http://localhost:3000` | Yes |
+| Name | Purpose | Example |
+|---|---|---|
+| `APP_ENV` | Runtime environment | `development` |
+| `APP_NAME` | Application name | `cognivest` |
+| `LOG_LEVEL` | Log verbosity | `INFO` |
+| `API_V1_PREFIX` | API base path | `/api/v1` |
+| `BACKEND_CORS_ORIGINS` | Allowed frontend origins (CORS) | `http://localhost:3000` |
 
 ## Backend / FastAPI
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `BACKEND_HOST` | Bind host | `0.0.0.0` | Yes |
-| `BACKEND_PORT` | Bind port | `8000` | Yes |
+| Name | Purpose | Example |
+|---|---|---|
+| `BACKEND_HOST` | Bind host | `0.0.0.0` |
+| `BACKEND_PORT` | Bind port | `8000` |
 
 ## Postgres
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `POSTGRES_HOST` | DB host (`postgres` in Docker, `localhost` native) | `postgres` | Yes |
-| `POSTGRES_PORT` | DB port | `5432` | Yes |
-| `POSTGRES_USER` | DB user | `cognivest` | Yes |
-| `POSTGRES_PASSWORD` | DB password (change from default) | `change_me` | Yes |
-| `POSTGRES_DB` | DB name | `cognivest` | Yes |
-| `DATABASE_URL` | Async SQLAlchemy URL | `postgresql+asyncpg://cognivest:change_me@postgres:5432/cognivest` | Yes |
+| Name | Purpose | Example |
+|---|---|---|
+| `POSTGRES_HOST` | DB host (`postgres` in Docker, `localhost` native) | `postgres` |
+| `POSTGRES_PORT` | DB port | `5432` |
+| `POSTGRES_USER` | DB user | `cognivest` |
+| `POSTGRES_PASSWORD` | DB password (change from default) | `change_me` |
+| `POSTGRES_DB` | DB name | `cognivest` |
+| `DATABASE_URL` | Async SQLAlchemy URL | `postgresql+asyncpg://cognivest:change_me@postgres:5432/cognivest` |
 
 See [database.md](./database.md).
 
 ## Redis (cache + Celery broker/backend)
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `REDIS_URL` | Cache connection | `redis://redis:6379/0` | Yes |
-| `CELERY_BROKER_URL` | Celery broker | `redis://redis:6379/1` | Yes |
-| `CELERY_RESULT_BACKEND` | Celery result backend | `redis://redis:6379/2` | Yes |
+| Name | Purpose | Example |
+|---|---|---|
+| `REDIS_URL` | Cache connection | `redis://redis:6379/0` |
+| `CELERY_BROKER_URL` | Celery broker | `redis://redis:6379/1` |
+| `CELERY_RESULT_BACKEND` | Celery result backend | `redis://redis:6379/2` |
 
-## Auth / JWT (RS256)
+## Cognee: LLM + embeddings
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `JWT_ALGORITHM` | Signing algorithm | `RS256` | Yes |
-| `JWT_PRIVATE_KEY_PATH` | RS256 private key path | `./secrets/jwt_private.pem` | Yes |
-| `JWT_PUBLIC_KEY_PATH` | RS256 public key path | `./secrets/jwt_public.pem` | Yes |
-| `JWT_ACCESS_TOKEN_TTL_MINUTES` | Access token lifetime | `15` | Yes |
-| `JWT_REFRESH_TOKEN_TTL_DAYS` | Refresh token lifetime | `7` | Yes |
-| `SERVICE_TOKEN` | Internal token for `/memory/*` calls | `change_me_internal_service_token` | Yes |
-
-Generate the keypair with `scripts/generate_jwt_keys.sh`. See [authentication.md](./authentication.md).
-
-## OAuth (Google)
+**This is the block that matters.** These are Cognee's own pydantic field names (not ours) — do not
+rename or prefix them. A single provider (**Gemini**, via litellm) powers both `cognify()` extraction
+and answer generation; embeddings run **locally** via fastembed (no API key, no cost). Verified in
+[spike-cognee-1.2.2.md](./spike-cognee-1.2.2.md) §3.
 
 | Name | Purpose | Example | Required? |
 |---|---|---|---|
-| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID | `…apps.googleusercontent.com` | If Google login enabled |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret | `…` | If Google login enabled |
+| `LLM_PROVIDER` | Cognee LLM provider | `gemini` | Yes |
+| `LLM_MODEL` | litellm-format model string | `gemini/gemini-2.5-flash` | Yes |
+| `LLM_API_KEY` | Gemini / Google AI key | `AIza…` | **Yes** (query path) |
+| `EMBEDDING_PROVIDER` | Embedding backend | `fastembed` | Yes |
+| `EMBEDDING_MODEL` | Embedding model | `sentence-transformers/all-MiniLM-L6-v2` | Yes |
+| `EMBEDDING_DIMENSIONS` | Vector width — **must** match the model | `384` | Yes (do not omit) |
 
-## Cognee
+> `gemini/gemini-2.0-flash` is deprecated by Google (free tier `limit: 0`) — use `2.5-flash`. Omitting
+> `EMBEDDING_DIMENSIONS` silently falls back to 3072 and breaks the first vector write (spike §3).
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `COGNEE_VECTOR_DB_PROVIDER` | Vector backend | `lancedb` (`lancedb` \| `weaviate` \| `qdrant`) | Yes |
-| `COGNEE_GRAPH_DB_PROVIDER` | Graph backend | `kuzu` (`kuzu` \| `neo4j`) | Yes |
-| `COGNEE_DATA_DIR` | Cognee data directory | `/data/cognee` | Yes |
-| `COGNEE_LLM_PROVIDER` | Cognee's LLM provider | `anthropic` | Yes |
+## Cognee: vector / graph / data dir (unverified — left commented)
 
-See [`cognee/config/README.md`](../cognee/config/README.md) and [memory-architecture.md](./memory-architecture.md).
+Present in `.env.example` but **commented out**. The spike did not confirm Cognee reads these
+`COGNEE_`-prefixed names (the analogous `COGNEE_LLM_PROVIDER` is ignored — Cognee reads `LLM_PROVIDER`).
+LanceDB + Kuzu are Cognee's defaults, so no wiring is needed today.
 
-## LLM (Anthropic Claude)
+| Name (commented) | Intended purpose | Default |
+|---|---|---|
+| `COGNEE_VECTOR_DB_PROVIDER` | Vector backend | `lancedb` |
+| `COGNEE_GRAPH_DB_PROVIDER` | Graph backend | `kuzu` |
+| `COGNEE_DATA_DIR` | Cognee data directory | `/data/cognee` |
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `ANTHROPIC_API_KEY` | Claude API key (answer generation) | `sk-ant-…` | Yes (query path) |
-| `LLM_MODEL` | Model id | `claude-opus-4-8` | Yes |
-| `LLM_MAX_TOKENS` | Max answer tokens | `2048` | Yes |
+## Auth / JWT / OAuth (present but inert today)
 
-See [prompting.md](./prompting.md).
+These exist in `.env.example` for the roadmap JWT/OAuth design. **They are not enforced** — auth is a
+demo `X-User-Id` header ([authentication.md](./authentication.md)). Safe to leave at defaults for the demo.
 
-## External data vendors (all pluggable)
+| Name | Purpose | Status |
+|---|---|---|
+| `JWT_ALGORITHM`, `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH`, `JWT_ACCESS_TOKEN_TTL_MINUTES`, `JWT_REFRESH_TOKEN_TTL_DAYS` | RS256 JWT config | 🎯 not enforced |
+| `SERVICE_TOKEN` | Internal token for `/memory/*` | 🎯 guard is a no-op |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth | 🎯 not wired |
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `MARKET_DATA_PROVIDER` | Price vendor | `polygon` (`polygon` \| `iex` \| `alphavantage`) | Yes (price collection) |
-| `MARKET_DATA_API_KEY` | Price vendor key | `…` | Yes (price collection) |
-| `NEWS_API_PROVIDER` | News vendor | `newsapi` (`newsapi` \| `gdelt`) | Yes (news collection) |
-| `NEWS_API_KEY` | News vendor key | `…` | Yes (news collection) |
-| `WEB_SEARCH_PROVIDER` | Web search vendor | `tavily` (`tavily` \| `serper`) | Yes (web collection) |
-| `WEB_SEARCH_API_KEY` | Web search vendor key | `…` | Yes (web collection) |
+## External data vendors (pluggable — collectors are stubs)
 
-## Scheduling
+Needed once the collector path is built; not required for the demo.
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `PRICE_COLLECT_CRON` | Price collection schedule (cron) | `0 22 * * 1-5` (EOD weekdays) | Yes |
-| `NEWS_COLLECT_INTERVAL_HOURS` | News collection interval (hours) | `2` | Yes |
-| `INGEST_DEDUP_ENABLED` | Toggle dedup hash check | `true` | Yes |
+| Name | Purpose | Example |
+|---|---|---|
+| `MARKET_DATA_PROVIDER` / `MARKET_DATA_API_KEY` | Price vendor + key | `polygon` |
+| `NEWS_API_PROVIDER` / `NEWS_API_KEY` | News vendor + key | `newsapi` |
+| `WEB_SEARCH_PROVIDER` / `WEB_SEARCH_API_KEY` | Web search vendor + key | `tavily` |
+
+## Scheduling (collectors are stubs)
+
+| Name | Purpose | Example |
+|---|---|---|
+| `PRICE_COLLECT_CRON` | Price collection schedule (cron) | `0 22 * * 1-5` |
+| `NEWS_COLLECT_INTERVAL_HOURS` | News collection interval (hours) | `2` |
+| `INGEST_DEDUP_ENABLED` | Toggle dedup hash check | `true` |
 
 ## Rate limiting
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `QUERY_RATE_LIMIT_PER_MINUTE` | Per-user query rate cap (LLM cost control) | `20` | Yes |
+| Name | Purpose | Example |
+|---|---|---|
+| `QUERY_RATE_LIMIT_PER_MINUTE` | Per-user query rate cap | `20` |
 
 ## Frontend (Next.js)
 
-| Name | Purpose | Example | Required? |
-|---|---|---|---|
-| `NEXT_PUBLIC_API_BASE_URL` | Backend API base URL (browser-exposed) | `http://localhost:8000/api/v1` | Yes |
+| Name | Purpose | Example |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | Backend API base URL (browser-exposed) | `http://localhost:8000/api/v1` |

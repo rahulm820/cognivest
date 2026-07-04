@@ -9,7 +9,6 @@ This is a short pointer. The full contribution guide is the root
 - **Getting set up** → [setup.md](./setup.md)
 - **Day-to-day workflow** (branching, commits, `make`, PRs) → [development-workflow.md](./development-workflow.md)
 - **Code style & layering** → [coding-standards.md](./coding-standards.md)
-- **Tests** → [tests/README.md](../tests/README.md)
 - **Code of Conduct** → [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)
 - **Security policy** → [SECURITY.md](../SECURITY.md)
 

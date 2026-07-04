@@ -1,8 +1,11 @@
 # Roadmap
 
 The development roadmap and future enhancements, from [ARCHITECTURE.md §14–§15](../ARCHITECTURE.md).
-Current status is **Phase 0 — Repository scaffold** (see [CLAUDE.md §15](../CLAUDE.md)): structure,
-docs, configs, and typed placeholders are in place; business logic is intentionally not implemented.
+
+**Current status:** a hackathon build on a scaffold (see [CLAUDE.md §15](../CLAUDE.md)). Live today:
+the Cognee seam (add/cognify/search/recall/forget, 1.2.2 signatures), per-ticker isolation, and the
+**query/recall route** (single-LLM, Gemini). Stubbed: watchlist/price/admin routes, collectors, and
+Celery tasks. Not present: auth (demo header instead), infrastructure, and CI.
 
 ## Development phases
 

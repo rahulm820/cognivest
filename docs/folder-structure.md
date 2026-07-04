@@ -10,16 +10,12 @@ cognivest/
 ├── backend/           # FastAPI + Celery — API, workers, the Cognee boundary
 ├── cognee/            # Cognee backend config + dataset-naming conventions (no raw data)
 ├── ai/                # Prompt templates (source of truth) + offline evaluation
-├── infrastructure/    # Terraform (IaC) + Helm charts
-├── deployment/        # GitHub Actions + ArgoCD definitions
 ├── docker/            # Dockerfiles + compose overrides
 ├── docs/              # This documentation tree
-├── scripts/           # Operational CLI scripts (backfill, purge, seed, key-gen)
-├── tests/             # Cross-cutting integration / e2e / performance / memory tests
-├── config/            # Shared, non-secret configuration (lint/format/type/test roots)
-├── .github/           # Issue/PR templates + CI workflow definitions
-├── secrets/           # Git-ignored: generated JWT keys, local-only secrets
-├── ARCHITECTURE.md    # The Software Architecture Document (single source of truth)
+├── scripts/           # Operational CLI scripts (seed, roundtrip, backfill/purge stubs, key-gen)
+├── config/            # Shared, non-secret configuration
+├── .github/           # Issue/PR templates + CODEOWNERS (no CI workflows yet)
+├── ARCHITECTURE.md    # The Software Architecture Document (design vision)
 ├── CLAUDE.md          # Durable AI-assistant context + invariants
 ├── CONTRIBUTING.md    # Contribution guide
 ├── Makefile           # Developer task runner
@@ -141,15 +137,12 @@ ai/
 
 See [`ai/README.md`](../ai/README.md) and [prompting.md](./prompting.md).
 
-## `infrastructure/` — Infrastructure as code
+## Not present yet (roadmap) 🎯
 
-Terraform modules (RDS Postgres, ElastiCache Redis, secrets, networking) and Helm charts for the
-backend API, Celery workers, and Celery Beat. See [deployment.md](./deployment.md).
-
-## `deployment/` — CI/CD + GitOps
-
-GitHub Actions workflow definitions and ArgoCD application manifests that deploy the Helm charts.
-Vercel handles frontend deploys directly from Git.
+The design references `infrastructure/` (Terraform + Helm), `deployment/` (GitHub Actions + ArgoCD),
+and `tests/` (cross-cutting suites). **None of these directories exist in the repo today.** There is
+also no `.github/workflows/` (CI); `.github/` holds only issue/PR templates and CODEOWNERS. Local
+Docker Compose is the only supported target — see [ARCHITECTURE.md §10](../ARCHITECTURE.md).
 
 ## `docker/` — Container build context
 
@@ -159,26 +152,20 @@ development. The root `docker-compose.yml` wires the local full stack.
 ## `docs/` — Documentation
 
 This tree. Indexed by [docs/README.md](./README.md): setup, API, conventions, memory architecture,
-deployment, and on-call [runbooks](./runbooks/README.md).
+and the Cognee spike.
 
 ## `scripts/` — Operational CLIs
 
-Admin and ops scripts: `backfill_ticker.py`, `purge_dataset.py`, `seed.py`, and
-`generate_jwt_keys.sh`. See [`scripts/README.md`](../scripts/README.md).
-
-## `tests/` — Cross-cutting tests
-
-Integration, e2e (Playwright), performance (k6), and Cognee memory-contract tests. **Unit tests
-live beside the code they test** (inside `backend/` and `frontend/`); this directory holds only
-cross-cutting suites. See [`tests/README.md`](../tests/README.md).
+`seed.py` (real — demo companies + user), `cognee_roundtrip.py` (real — the Cognee round-trip),
+`backfill_ticker.py` / `purge_dataset.py` (stubs), and `generate_jwt_keys.sh` (for the roadmap JWT
+work). See [`scripts/README.md`](../scripts/README.md).
 
 ## `config/` — Shared configuration
 
-Non-secret shared configuration roots referenced by tooling (lint/format/type/test). Project-level
-tool config (ruff, black, mypy, eslint, prettier) lives alongside each app; this directory holds
-configuration shared across apps.
+Non-secret shared configuration (`logging.yaml`, `ratelimits.yaml`, `scheduling.example.yaml`).
+Project-level tool config (ruff, black, mypy, eslint, prettier) lives alongside each app.
 
 ## `.github/` — GitHub metadata
 
-Issue templates, the pull-request template, and CI workflow definitions (lint → type → test →
-build → deploy). Referenced by [development-workflow.md](./development-workflow.md).
+Issue templates, the pull-request template, and CODEOWNERS. **No CI workflows** (`.github/workflows/`)
+exist yet — CI is roadmap.

@@ -18,7 +18,7 @@ controllers / routes  →  services  →  repositories  →  Postgres
 | Layer | Directory | Responsibility |
 |---|---|---|
 | **Controllers / routes** | `src/controllers/`, `src/routes/` | Thin FastAPI handlers: validate via Pydantic, delegate, return a schema. **No business logic.** |
-| **Middleware** | `src/middleware/` | `auth_middleware.py` (JWT + RBAC), `rate_limit.py`. |
+| **Middleware** | `src/middleware/` | `auth_middleware.py` (demo `X-User-Id` identity today; JWT/RBAC is roadmap — see [authentication.md](./authentication.md)), `rate_limit.py`. |
 | **Services** | `src/services/` | Business logic / orchestration. Never import routers. |
 | **Repositories** | `src/repositories/` | **All** Postgres access. No SQL anywhere else. Never import services. |
 | **Models** | `src/models/` | SQLAlchemy models. |
@@ -49,45 +49,47 @@ reimplement retrieval/embedding/reranking/summarization. See
 
 ## Request flow examples
 
-### Ingestion (async)
+### Query (sync) ✅ — the live path
 
 ```text
-Celery task → collector_service.run_for_ticker(ticker)
-  → price_collector / news_collector fetch
-  → normalizer + dedup (content hash vs ingested_items in Postgres)
-  → memory_service.ingest → cognee_client.add(dataset=company_{ticker})
-  → enqueue cognify task → cognee_client.cognify(datasets=[company_{ticker}])
+POST /companies/{ticker}/query
+  → MemoryService.answer(ticker, question)
+  → cognee_client.search(query_text=question, query_type=GRAPH_COMPLETION, datasets=[company_{ticker}])
+  → grounded answer (Cognee GRAPH_COMPLETION, single-LLM, Gemini) + honest citations
 ```
 
-### Query (sync)
+No `dataset_name=`/`filters=` on `search` (cognee 1.2.2) and **no separate answer-formatter LLM** —
+the answer is Cognee's `GRAPH_COMPLETION` output.
+
+### Ingestion (async) 🎯 — designed, not built
 
 ```text
-POST /companies/{ticker}/query → query_service
-  → memory_service.search(dataset=company_{ticker}, query, filters=date_range)
-  → answer_formatter (LLM, see prompting.md)
-  → cited answer
+Celery task → collector_service.run_for_ticker(ticker)          # stub
+  → price_collector / news_collector fetch                       # stub
+  → normalizer + dedup (content hash vs ingested_items)          # stub
+  → memory_service.ingest → cognee_client.add(dataset_name=company_{ticker})
+  → cognee_client.cognify(datasets=[company_{ticker}])
 ```
 
-## Workers / Celery queues
+`MemoryService.ingest` (add + cognify) is implemented on the seam, but no collector or route drives it
+yet; the demonstrable round-trip is [`scripts/cognee_roundtrip.py`](../scripts/cognee_roundtrip.py).
 
-Background execution via **Celery + Redis broker**, scheduled by **Celery Beat**. Three queues so
-they scale/throttle independently (from [ARCHITECTURE.md §4.7](../ARCHITECTURE.md)):
+## Workers / Celery queues 🎯 (containers boot; task bodies are stubs)
+
+The design uses **Celery + Redis broker** + **Celery Beat**, with three queues that scale/throttle
+independently (from [ARCHITECTURE.md §4.7](../ARCHITECTURE.md)):
 
 | Queue | Work |
 |---|---|
-| `price` | scheduled price collection (e.g. end-of-day, `PRICE_COLLECT_CRON`). |
-| `news` | scheduled news/web collection (every 1–4 h, `NEWS_COLLECT_INTERVAL_HOURS`). |
-| `cognify` | `cognee.cognify()` runs, **decoupled** so a slow cognify never blocks fetches. |
+| `price` | scheduled price collection (`PRICE_COLLECT_CRON`). |
+| `news` | scheduled news/web collection (`NEWS_COLLECT_INTERVAL_HOURS`). |
+| `cognify` | `cognee.cognify()` runs, decoupled so a slow cognify never blocks fetches. |
 
-Properties:
+Intended properties (roadmap): idempotent tasks (dedup hash before `add()`), exponential-backoff
+retries with a dead-letter queue, and per-ticker isolation. Today the `worker`/`beat` containers start
+but the tasks are stubs and nothing is scheduled — the demo path is synchronous.
 
-- Every task is **idempotent** (dedup hash before `add()`) and safe to retry.
-- Retries use exponential backoff; after N failures a task goes to a **dead-letter queue (DLQ)**.
-- Per-company isolation: one ticker's collector failure must not block others.
-
-Run locally: `make worker`, `make beat`. See the
-[cognify-backlog runbook](./runbooks/cognify-backlog.md) and
-[ingestion-failure runbook](./runbooks/ingestion-failure.md).
+Run locally: `make worker`, `make beat`.
 
 ## Config
 
