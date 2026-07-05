@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type AxiosInstance } from "axios";
+import { useUiStore, DEFAULT_IDENTITY } from "@/store";
 
 /**
  * Centralized axios instance — the single seam for all backend HTTP access.
@@ -26,11 +27,14 @@ export const apiClient: AxiosInstance = axios.create({
   timeout: 15_000,
 });
 
-// --- Request interceptor: attach auth token -------------------------------
+// --- Request interceptor: attach demo identity ----------------------------
 apiClient.interceptors.request.use((config) => {
-  // TODO(phase-1): read the access token from the auth store / cookie and attach it.
-  // const token = getAccessToken();
-  // if (token) config.headers.Authorization = `Bearer ${token}`;
+  // Demo identity is asserted via the `X-User-Id` header (CLAUDE.md §8). Real
+  // JWT/OAuth is roadmap. We read it from the persisted UI store so the Agent
+  // Memory rail's editable identity flows through to every backend call.
+  const identity =
+    typeof window !== "undefined" ? useUiStore.getState().identity : DEFAULT_IDENTITY;
+  config.headers.set?.("X-User-Id", identity || DEFAULT_IDENTITY);
   return config;
 });
 

@@ -2,46 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Cognivest design system — dark-only.
+ * Palette is defined once here as CSS vars (HSL triplets so Tailwind's `/alpha`
+ * modifiers keep working) and mapped to Tailwind color names in tailwind.config.ts.
+ * NO ad-hoc hex in components — reach for the tokens (bg-background, text-muted, …).
+ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
-  }
+    /* base surfaces */
+    --background: 216 33% 6%; /* #0A0E14 */
+    --card: 218 33% 10%; /* #111722 surface */
+    --card-foreground: 208 35% 93%;
+    --surface-raised: 217 32% 15%; /* #1A2332 */
+    --popover: 218 33% 10%;
+    --popover-foreground: 208 35% 93%;
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* text */
+    --foreground: 208 35% 93%; /* #E6EDF3 text-primary */
+    --muted: 217 32% 15%;
+    --muted-foreground: 214 15% 60%; /* #8B98A9 text-muted */
+
+    /* emerald accent = primary (buttons, chart line auto-adopt) */
+    --primary: 160 84% 39%; /* #10B981 */
+    --primary-foreground: 216 33% 6%;
+    --accent-hover: 158 64% 52%; /* #34D399 */
+
+    /* neutral hover surface (kept OFF emerald: many hover:bg-accent sites) */
+    --accent: 217 32% 15%; /* #1A2332 */
+    --accent-foreground: 208 35% 93%;
+    --secondary: 217 32% 15%;
+    --secondary-foreground: 208 35% 93%;
+
+    /* danger */
+    --destructive: 0 91% 71%; /* #F87171 */
+    --destructive-foreground: 216 33% 6%;
+
+    /* lines + inputs + focus */
+    --border: 219 29% 19%; /* #232D3F */
+    --input: 219 29% 19%;
+    --ring: 160 84% 39%;
+    --radius: 0.75rem;
+
+    /* raw hex for rgba() glow/pulse shadows inside keyframes */
+    --emerald: #10b981;
   }
 }
 
@@ -49,7 +53,132 @@
   * {
     @apply border-border;
   }
+  html {
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* ── Motion primitives (150–250ms ease-out; staggers 60–80ms; nothing bounces) ── */
+@layer utilities {
+  /* skeleton shimmer */
+  @keyframes shimmer {
+    0% {
+      background-position: -450px 0;
+    }
+    100% {
+      background-position: 450px 0;
+    }
+  }
+  .shimmer {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--surface-raised)) 0%,
+      hsl(var(--border)) 40%,
+      hsl(var(--surface-raised)) 80%
+    );
+    background-size: 450px 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
+  /* answer + chip reveal */
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 220ms ease-out both;
+  }
+
+  /* marker landing on the price line */
+  @keyframes marker-drop {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.4);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .animate-marker-drop {
+    animation: marker-drop 240ms ease-out both;
+  }
+
+  /* soft pulse ring — 2 pulses then settle */
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.6);
+      opacity: 0.7;
+    }
+    70% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+  }
+  .animate-pulse-ring {
+    animation: pulse-ring 1.1s ease-out 2;
+    transform-origin: center;
+  }
+  /* continuous gentle glow while a marker/chip is hover-linked */
+  @keyframes pulse-ring-linked {
+    0%,
+    100% {
+      transform: scale(0.7);
+      opacity: 0.6;
+    }
+    60% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+  .animate-pulse-ring-linked {
+    animation: pulse-ring-linked 1.1s ease-out infinite;
+    transform-origin: center;
+  }
+
+  /* memory card slide-in */
+  @keyframes memory-slide {
+    from {
+      opacity: 0;
+      transform: translateX(14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  .animate-memory-slide {
+    animation: memory-slide 240ms ease-out both;
+  }
+
+  /* emerald focus glow on the memory directive input */
+  @keyframes focus-glow {
+    0% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35);
+    }
+  }
+  .animate-focus-glow {
+    animation: focus-glow 200ms ease-out forwards;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 }

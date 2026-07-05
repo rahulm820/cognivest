@@ -76,6 +76,14 @@ export interface QueryResponse {
   graphSnippet?: GraphSnippet;
 }
 
+/** User feedback on a specific answer, fed back to the memory layer. */
+export interface ReflectionRequest {
+  ticker: string;
+  question: string;
+  feedbackText: string;
+  helpful: boolean;
+}
+
 /** An ingestion job run, surfaced on the admin screen. */
 export interface JobRun {
   id: string;

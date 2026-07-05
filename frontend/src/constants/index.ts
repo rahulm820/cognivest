@@ -10,8 +10,20 @@ export const API_ROUTES = {
   company: (ticker: string) => `/companies/${ticker}`,
   companyPrice: (ticker: string) => `/companies/${ticker}/price`,
   companyQuery: (ticker: string) => `/companies/${ticker}/query`,
+  memoryReflection: "/memory/reflection",
   adminJobs: "/admin/jobs",
 } as const;
+
+/**
+ * Seeded demo watchlist. `GET /companies` currently returns 501, so the demo
+ * hardcodes the three seeded tickers (`make seed`) instead of fetching them.
+ * Names are a small local label map — no `/companies` endpoint to source them.
+ */
+export const SEEDED_TICKERS = [
+  { ticker: "AAPL", name: "Apple Inc." },
+  { ticker: "MSFT", name: "Microsoft Corporation" },
+  { ticker: "TSLA", name: "Tesla, Inc." },
+] as const;
 
 /** TanStack Query cache key factories — keep keys centralized for invalidation. */
 export const QUERY_KEYS = {
