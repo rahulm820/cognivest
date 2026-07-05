@@ -1,7 +1,8 @@
 # Coding Standards
 
-These standards are enforced by tooling and CI. They derive from [CLAUDE.md §5–§6](../CLAUDE.md)
-and the root [CONTRIBUTING.md](../CONTRIBUTING.md). Run `make lint` and `make fmt`.
+These standards are enforced by local tooling (`make lint` / `make fmt`). They derive from
+[CLAUDE.md §5–§6](../CLAUDE.md) and the root [CONTRIBUTING.md](../CONTRIBUTING.md). *(There is no CI
+pipeline yet — run the checks locally.)*
 
 ## Python (backend)
 
@@ -97,6 +98,6 @@ OpenAPI + [api.md](./api.md).
 
 - [Conventional Commits](https://www.conventionalcommits.org/); see
   [development-workflow.md](./development-workflow.md).
-- New code ships with tests; bug fixes ship with a regression test. Target ≥80% coverage on
-  `services/` and `collectors/`. See [tests/README.md](../tests/README.md).
-- CI must be green (lint + type + test) before review.
+- New code should ship with tests once a suite exists (there is **no `tests/` directory or CI yet** —
+  roadmap). Target ≥80% coverage on `services/` and `collectors/` when tests land.
+- Run `make lint` locally before opening a PR.

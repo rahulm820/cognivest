@@ -1,91 +1,57 @@
 # Authentication & Authorization
 
-Auth secures the **application layer** (users/admins) only. Cognee is treated as an internal,
-network-isolated service. Derived from [ARCHITECTURE.md §9](../ARCHITECTURE.md) and
-[§4.6](../ARCHITECTURE.md).
+> **Reality check.** For this hackathon build, auth is a **demo identity mechanism, not
+> authentication.** Identity is asserted with a single header; no tokens are verified. The JWT/OAuth
+> design is documented at the end as **roadmap**. Restore real auth before anything ships.
 
-## JWT (RS256)
+## What's built today: the `X-User-Id` header
 
-- **Algorithm**: RS256 (asymmetric). Tokens are signed with a **private key** and verified with a
-  **public key** — the private key never leaves the auth issuer.
-- **Access token**: short-lived (**15 min**, `JWT_ACCESS_TOKEN_TTL_MINUTES`). Sent on every request
-  as `Authorization: Bearer <token>`.
-- **Refresh token**: longer-lived (**7 days**, `JWT_REFRESH_TOKEN_TTL_DAYS`), **rotated** on each
-  use.
-- **Sessions are stateless** — the API verifies the JWT signature; no server-side session store for
-  access tokens.
+Identity is asserted by the caller via an `X-User-Id` request header. There is no token, no signature,
+no verification. Source of truth: [`backend/src/middleware/auth_middleware.py`](../backend/src/middleware/auth_middleware.py).
 
-### Keys
-
-Generate the RS256 keypair with the helper script (writes to the git-ignored `./secrets/`):
+| Dependency | Behavior today |
+|---|---|
+| `get_current_user` | Reads `X-User-Id` (default `demo-user`). Returns a `CurrentUser` with role **`admin`** — so the single demo user can reach every screen, including `/admin`. |
+| `require_admin` | Kept for API shape. Passes, because the demo user is always `admin`. |
+| `require_service_token` | Guards `/memory/*` in the design. **No-op today** — internal endpoints are not actually gated. |
 
 ```bash
-bash scripts/generate_jwt_keys.sh
+# every route is callable with no credentials; the header just names the principal
+curl -s http://localhost:8000/api/v1/companies/AAPL/query \
+  -H 'Content-Type: application/json' \
+  -H 'X-User-Id: demo-user' \
+  -d '{"question": "Why did the stock move?"}'
 ```
 
-Configured via `.env` (see [environment.md](./environment.md)):
+Missing header → `demo-user`. That's it. This is enough for the one thing per-user memory needs — a
+**stable user id** to thread into session-scoped recall — without the ceremony of a real auth stack.
 
-```ini
-JWT_ALGORITHM=RS256
-JWT_PRIVATE_KEY_PATH=./secrets/jwt_private.pem
-JWT_PUBLIC_KEY_PATH=./secrets/jwt_public.pem
-JWT_ACCESS_TOKEN_TTL_MINUTES=15
-JWT_REFRESH_TOKEN_TTL_DAYS=7
-```
+### What this means
 
-In production, keys come from the secrets manager, never committed. See [deployment.md](./deployment.md).
+- **RBAC is effectively off.** The demo principal is always `admin`; `require_admin` never blocks.
+- **`/memory/*` is not network-isolated or token-gated** in the demo — the service-token check is a
+  no-op. Treat the running stack as trusted/local only.
+- The JWT/OAuth code paths and the login page exist in the tree but are **bypassed** at runtime.
 
-## Refresh & rotation
+## Roadmap: real auth (designed, not built) 🎯
 
-- `POST /auth/login` issues an access + refresh pair (see [api.md](./api.md)).
-- `POST /auth/refresh` validates the presented refresh token, **rotates** it (issues a new one and
-  invalidates the old), and returns a fresh access token.
-- **Refresh tokens are stored hashed in Postgres** so they can be **revoked** on logout or suspected
-  compromise. Rotation means a stolen-and-replayed old refresh token fails after the legitimate
-  client has refreshed.
+The intended production design, none of which is enforced today:
 
-## OAuth (Google)
+- **JWT (RS256):** short-lived access token (15 min) + rotating refresh token (7 days), signed with a
+  private key and verified with a public key. Config placeholders (`JWT_*`) exist in `.env.example`.
+- **OAuth (Google):** sign-in mapped to the same `users` table by email
+  (`GOOGLE_OAUTH_CLIENT_ID` / `_SECRET`).
+- **Refresh rotation + revocation:** refresh tokens stored hashed in Postgres.
+- **RBAC:** `user` vs `admin` enforced in middleware.
+- **Internal service token:** `/memory/*` gated by `SERVICE_TOKEN` in addition to network isolation.
+- **Key generation helper:** [`scripts/generate_jwt_keys.sh`](../scripts/generate_jwt_keys.sh)
+  writes an RS256 keypair to the git-ignored `./secrets/` (for when JWT is wired up).
 
-Google sign-in is an additional login option, mapped to the **same `users` table** via email. A
-Google login resolves to (or creates) the same user record a password login would, so RBAC and
-watchlists are identical regardless of login method.
+See [ARCHITECTURE.md §9](../ARCHITECTURE.md) for the full target design.
 
-Configured via `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`.
+## Related controls (real today)
 
-## RBAC
-
-Two roles for v1, enforced in middleware (`backend/src/middleware/auth_middleware.py`):
-
-| Role | Can |
-|---|---|
-| `user` | manage own watchlist, query own companies (`/companies/*`). |
-| `admin` | everything `user` can, plus ingestion health (`/admin/jobs`), `/memory/reflection`, `/memory/delete`. |
-
-The role is a claim in the access token and a column on `USERS` (see [database.md](./database.md)).
-
-## Internal service token for `/memory/*`
-
-The `/memory/*` endpoints are **internal-only**: they are network-isolated (private subnet) **and**
-require a service-to-service token in addition to any role check:
-
-```ini
-SERVICE_TOKEN=change_me_internal_service_token
-```
-
-- Collectors and the query path reach Cognee through `memory_service.py`, which presents the
-  service token on internal calls.
-- `/memory/reflection` and `/memory/delete` additionally require the `admin` role.
-- The frontend **never** calls `/memory/*` directly — only `/companies/{ticker}/query`, which wraps
-  `/memory/search` server-side.
-
-This layering keeps the Cognee single seam (see [memory-architecture.md](./memory-architecture.md))
-both code-isolated and network-isolated.
-
-## Related security controls
-
-- CORS locked to known frontend origins (`BACKEND_CORS_ORIGINS`).
-- Per-user rate limiting on `/companies/{ticker}/query` (`QUERY_RATE_LIMIT_PER_MINUTE`) for LLM cost
-  control.
-- Prompt-injection guard on retrieved content (see [prompting.md](./prompting.md)).
-
-See [ARCHITECTURE.md §11](../ARCHITECTURE.md) for the full security model.
+- **CORS** locked to configured origins (`BACKEND_CORS_ORIGINS`) — enforced in
+  [`backend/src/main.py`](../backend/src/main.py).
+- **Prompt-injection stance:** retrieved web/news content is treated as data, not instructions (a
+  design rule — see [prompting.md](./prompting.md)).

@@ -2,8 +2,32 @@
 
 ### Per-Company Financial Intelligence Platform powered by Cognee
 
-> This document is the **single source of truth** for the system design. All code, structure, and
-> conventions in this repository derive from it. When in doubt, this document wins.
+> This document is the **design vision** for Cognivest — the target architecture the system is growing
+> toward. It is intentionally more ambitious than the current build.
+
+---
+
+## 0. Design vision vs. what's built today
+
+> **Read this first.** Cognivest is a hackathon build. This document describes the *intended* system;
+> much of it is not yet implemented. To keep it honest, sections are tagged:
+>
+> - ✅ **Built** — exists and runs on `main` today.
+> - 🎯 **Target** — designed here but **not built**; treat as roadmap.
+>
+> **Built today (✅):** the FastAPI app + OpenAPI docs; the single Cognee seam
+> (`cognee_client.py`, spike-verified 1.2.2 signatures); per-ticker dataset isolation
+> (`company_{ticker}`); the **live query/recall path** `POST /api/v1/companies/{ticker}/query`
+> (single-LLM, Cognee `GRAPH_COMPLETION` on **Gemini**, honest "no data yet" when empty); local
+> embeddings via **fastembed**; **LanceDB** (vector) + **Kuzu** (graph); `docker-compose` for the
+> local stack; `scripts/seed.py`.
+>
+> **Not built — target only (🎯):** JWT/OAuth auth (today is a demo `X-User-Id` header — §9);
+> collectors, dedup, and Celery scheduling (containers boot, tasks are stubs — §4.7); the
+> answer-formatter two-LLM step (the live path is single-LLM — §6); the Postgres-backed
+> watchlist/admin routes (§4.4 stubs); deployment / Kubernetes / Terraform / CI (§10); scale-out
+> and the NFR targets (§1.7, §12). Ground truth for the Cognee stack is
+> [docs/spike-cognee-1.2.2.md](./docs/spike-cognee-1.2.2.md).
 
 ---
 
@@ -34,8 +58,9 @@ the two causally/temporally.
   duplicate "summarizer" service.
 - Allow users to ask natural-language questions scoped to a company and date range and receive cited,
   ranked answers.
-- Scope memory per company (multi-tenant-by-ticker) so graphs don't bleed across companies.
-- Be production-ready: dedup, scheduling, observability, security — not a notebook script.
+- Scope memory per company (multi-tenant-by-ticker) so graphs don't bleed across companies. ✅
+- 🎯 **Target:** production hardening — dedup, scheduling, observability, security. *(Not built; the
+  current build is a single-node hackathon stack.)*
 
 ### 1.4 Target Users
 
@@ -61,7 +86,7 @@ the two causally/temporally.
 - **FR6**: System surfaces price chart + correlated news markers in the UI.
 - **FR7**: Admin can view ingestion health (last run, item counts, errors) per company.
 
-### 1.7 Non-Functional Requirements
+### 1.7 Non-Functional Requirements 🎯 (target — not yet measured or enforced)
 
 - **Scalability**: support 1,000+ tickers with independent ingestion schedules.
 - **Reliability**: collector failures for one company must not block others (isolation, retries, dead-letter queue).
@@ -232,13 +257,17 @@ sequenceDiagram
     alt cache hit
         DB-->>API: cached result
     else cache miss
-        API->>Cog: cognee.search/recall(query, dataset_name=company_AAPL, filters=date_range)
-        Cog-->>API: ranked nodes/passages + citations
+        API->>Cog: cognee.search(query_text, query_type=GRAPH_COMPLETION, datasets=[company_AAPL])
+        Cog-->>API: grounded answer + provenance
         API->>DB: store result in cache
     end
     API-->>FE: answer + citations + graph snippet
     FE-->>User: render answer, chart markers, sources
 ```
+
+> Note: `search()` in cognee 1.2.2 takes `datasets=` (plural), **not** `dataset_name=`, and has **no**
+> `filters=` param (see [docs/spike-cognee-1.2.2.md](./docs/spike-cognee-1.2.2.md) §2). The cache and
+> chart-marker steps are 🎯 target. The answer is Cognee's `GRAPH_COMPLETION` output — single-LLM.
 
 ### 2.6 Service Communication
 
@@ -249,7 +278,8 @@ sequenceDiagram
 ### 2.7 AI Pipeline (summary — detailed in §5/§6)
 
 Collection → Normalization/Dedup → `cognee.add()` → `cognee.cognify()` (entity/relationship extraction,
-embedding, graph build) → `cognee.search()` / `recall()` on query → LLM-formatted answer with citations.
+embedding, graph build) → `cognee.search()` / `recall()` on query → **grounded answer** (Cognee
+`GRAPH_COMPLETION`, single-LLM). *Collection/dedup are 🎯 target; the query half is ✅ built.*
 
 ### 2.8 External APIs
 
@@ -258,13 +288,15 @@ embedding, graph build) → `cognee.search()` / `recall()` on query → LLM-form
 - GDELT for global event-level coverage.
 - RSS feeds from financial outlets (Reuters, Bloomberg-style feeds where licensed).
 - Web search API (Tavily/Serper-class) for broad "all over the internet" company-specific queries.
-- LLM provider (Anthropic Claude) for the answer-generation step on top of Cognee's retrieved context.
+- **LLM provider: Gemini** (`gemini/gemini-2.5-flash` via litellm) — used by Cognee for both `cognify()`
+  extraction and answer generation. Embeddings run **locally** via fastembed (no embedding API). *(The
+  data-vendor APIs above are 🎯 target; only the Gemini/Cognee path is ✅ built.)*
 
-### 2.9 Authentication Flow
+### 2.9 Authentication Flow 🎯 (target — today it is a demo header, see §9)
 
-Standard JWT-based auth for end users/admins (detailed in §9). Collector workers and the Memory
-Orchestration Service authenticate to external APIs via per-vendor API keys stored in a secrets manager —
-never in code or datasets.
+The target is JWT-based auth for end users/admins (detailed in §9). **Today, identity is a demo
+`X-User-Id` header** — no tokens are verified. Collector workers would authenticate to external APIs
+via per-vendor API keys from a secrets manager.
 
 ### 2.10 Storage Architecture
 
@@ -481,7 +513,10 @@ Auth: required (user). Validation: ticker format, uniqueness per user.
   "graph_snippet": { "nodes": [], "edges": [] }
 }
 ```
-Internally calls `cognee.search` / `recall(dataset_name=f"company_{ticker}", query=question, filters=date_range)`.
+✅ **This is the one live end-to-end route.** Internally: `MemoryService.answer` →
+`cognee.search(query_text=question, query_type=GRAPH_COMPLETION, datasets=[f"company_{ticker}"])`
+(single-LLM; no `dataset_name=`/`filters=` in 1.2.2). Returns an honest "no data ingested yet" answer
+when the dataset is empty. The other `/companies` routes below are 🎯 stubs (`NotImplementedError`).
 
 **`GET /admin/jobs`** — ingestion health (admin only)
 ```json
@@ -547,14 +582,14 @@ erDiagram
 **Indexes**: `INGESTED_ITEMS(content_hash)` unique per company for O(1) dedup checks;
 `INGESTION_JOBS(company_id, run_at)` for health queries; `COMPANIES(ticker)` unique.
 
-### 4.6 Authentication
+### 4.6 Authentication 🎯 (target — today: demo `X-User-Id` header, see §9)
 
 - **JWT** access + refresh tokens issued on login; access token short-lived (15 min), refresh rotated.
 - **OAuth** (Google) as an additional login option, mapped to the same user record.
 - **Sessions**: stateless via JWT; refresh tokens stored hashed in Postgres for revocation.
 - **RBAC**: two roles for v1 — `user` (own watchlist + queries) and `admin` (ingestion health, all companies).
 
-### 4.7 Background Jobs
+### 4.7 Background Jobs 🎯 (target — worker/beat containers boot, but task bodies are stubs)
 
 - **Queue**: Celery + Redis broker; separate queues for `price`, `news`, `cognify` to allow independent scaling/throttling.
 - **Scheduling**: Celery beat triggers per-company jobs — price end-of-day, news every 1–4 hours, configurable per ticker.
@@ -641,13 +676,14 @@ flowchart LR
 3. **Similarity search** — top-k chunks retrieved from the vector store within the scoped dataset.
 4. **Graph traversal** — related entities/edges pulled in.
 5. **Context reranking** — Cognee's internal ranking (vector similarity + graph relevance + recency).
-6. **Final prompt assembly** — `answer_formatter` builds the LLM prompt with citation placeholders and calls the LLM.
+6. **Answer generation** — Cognee's `GRAPH_COMPLETION` produces the grounded answer directly
+   (single-LLM, Gemini). *(The separate `answer_formatter` two-LLM step is 🎯 target — a stub today.)*
 
 ### 5.6 Memory Lifecycle
 
 - **Creation**: every successful `add()` + `cognify()` call from the collector pipeline.
 - **Updates**: re-ingestion of corrected/updated articles is treated as new content; dedup hash prevents true duplicates, updated articles (different hash, same URL) are linked via entity linking.
-- **Deletion**: `DELETE /companies/{ticker}` removes the watchlist entry; a separate explicit "purge memory" admin action calls Cognee's delete API.
+- **Deletion**: `DELETE /companies/{ticker}` removes the watchlist entry; a separate explicit "purge memory" admin action calls **`cognee.forget(dataset=f"company_{ticker}")`** (top-level `cognee.delete()` is deprecated in 1.2.2 — see the spike, CONTRADICTION #2).
 - **Forgetting**: optional TTL-based pruning of low-relevance old episodic nodes — a scheduled consolidation job.
 - **Consolidation**: periodic `cognify()` / reflection passes merge duplicate entities and stale edges.
 - **Compression**: long-tail low-relevance episodic content summarized into semantic-memory nodes during consolidation.
@@ -655,19 +691,27 @@ flowchart LR
 ### 5.7 Cognee-Backed APIs (backend wrapper surface)
 
 ```text
-POST /memory/store      → cognee.add(content, dataset_name=f"company_{ticker}") then cognee.cognify()
-POST /memory/search     → cognee.search()/recall(dataset_name=..., query=..., filters=...)
-POST /memory/context    → returns assembled context block (chunks + graph snippet) for LLM prompt injection
-POST /memory/reflection → triggers a consolidation/cognify pass to merge duplicate entities
-DELETE /memory/delete   → admin-only; removes a dataset or a date-bounded slice of it
+POST /memory/store      → cognee.add(content, dataset_name=f"company_{ticker}") then cognee.cognify(datasets=[...])
+POST /memory/search     → cognee.search(query_text=..., query_type=GRAPH_COMPLETION, datasets=[...])  # no dataset_name/filters
+POST /memory/context    → returns assembled context block for the query path
+POST /memory/reflection → triggers a consolidation/cognify pass
+DELETE /memory/delete   → admin-only; cognee.forget(dataset=f"company_{ticker}")  # delete() is deprecated
 ```
+
+> 🎯 The `/memory/*` **routes** are stubs today (`NotImplementedError`); the underlying seam methods
+> they will call (`add`/`cognify`/`search`/`recall`/`forget`) are ✅ implemented with the signatures above.
 
 ---
 
 ## 6. AI Pipeline
 
-- **Prompt Engineering**: `answer_formatter` uses a fixed template — system prompt establishes the assistant's role as a financial-news analyst, instructs it to only use the provided context, and to cite sources by index.
-- **LLM Orchestration**: a single call to the LLM (Claude) per user query, with retrieved Cognee context as grounding — no multi-agent orchestration in v1.
+> **Built today (✅):** answers are Cognee's `GRAPH_COMPLETION` output — a single LLM call **inside
+> Cognee**, on **Gemini** (`gemini/gemini-2.5-flash`), grounded in the retrieved graph/vector context.
+> The bespoke `answer_formatter` + prompt-template design below is 🎯 **target** (a scaffold stub today;
+> the prompt files exist under `ai/prompts/`).
+
+- **Prompt Engineering** 🎯: `answer_formatter` would use a fixed template — system prompt establishes the assistant's role as a financial-news analyst, instructs it to only use the provided context, and to cite sources by index.
+- **LLM Orchestration**: a single LLM call per user query, with retrieved Cognee context as grounding — no multi-agent orchestration. *(Today that single call is Cognee's own `GRAPH_COMPLETION` on Gemini.)*
 - **Retrieval Augmented Generation**: Cognee's `search()` / `recall()` *is* the RAG retrieval step.
 - **Memory**: handled entirely by Cognee (§5); the LLM call itself is stateless per request.
 - **Tool Calling**: not required for v1; a future enhancement (§16) could let the LLM call `cognee.search` again mid-reasoning.
@@ -679,6 +723,10 @@ DELETE /memory/delete   → admin-only; removes a dataset or a date-bounded slic
 ---
 
 ## 7. API Design — Summary Table
+
+> ✅ **Live today:** `/health` (+ `/api/v1/health`) and `POST /companies/{ticker}/query`. Everything
+> else in the table is a 🎯 typed stub (`NotImplementedError`). "Auth" here is the *target*; today all
+> routes accept the demo `X-User-Id` header (§9). See [docs/api.md](./docs/api.md) for the live matrix.
 
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
@@ -705,7 +753,11 @@ timestamp), not the graph content itself.
 
 ---
 
-## 9. Authentication
+## 9. Authentication 🎯 (target — NOT built)
+
+> **Reality today:** identity is a demo **`X-User-Id` header** (default `demo-user`, role `admin`);
+> no tokens are verified and the `/memory/*` service token is a no-op. See
+> [docs/authentication.md](./docs/authentication.md). Everything below is the intended design.
 
 - **JWT**: short-lived access token (15 min) + rotating refresh token (7 days), signed with an asymmetric key (RS256).
 - **OAuth**: Google sign-in mapped to the same `users` table via email.
@@ -714,7 +766,11 @@ timestamp), not the graph content itself.
 
 ---
 
-## 10. Deployment Architecture
+## 10. Deployment Architecture 🎯 (target — NOT built)
+
+> **Reality today:** the only supported target is **local `docker-compose`** (postgres, redis, backend,
+> worker, beat, frontend). There is **no** Kubernetes, Helm, Terraform, ArgoCD, Vercel, or CI in the
+> repo — no `infrastructure/`, `deployment/`, or `.github/workflows/`. The topology below is aspirational.
 
 ```mermaid
 flowchart TB
@@ -759,7 +815,11 @@ flowchart TB
 
 ---
 
-## 11. Security
+## 11. Security 🎯 (target — mostly NOT built)
+
+> **Reality today:** CORS is locked to configured origins (✅, `main.py`) and the prompt-injection
+> stance is a design rule. Auth, encryption-at-rest, secrets management, and rate limiting below are
+> 🎯 target — the demo runs with the `X-User-Id` header and no token verification.
 
 - **Authentication/Authorization**: JWT + RBAC as in §9; internal memory endpoints isolated on a private subnet.
 - **Encryption**: TLS in transit everywhere; encryption at rest for Postgres and Cognee stores.
@@ -773,7 +833,9 @@ flowchart TB
 
 ---
 
-## 12. Scalability Considerations
+## 12. Scalability Considerations 🎯 (target — NOT built)
+
+> The current build is a single-node Docker Compose stack; none of the scaling machinery below exists yet.
 
 - **Horizontal scaling**: API pods and Celery worker pods scale independently via Kubernetes HPA.
 - **Vertical scaling**: Cognee's graph/vector backends scaled per provider's managed-service tiers.

@@ -75,8 +75,9 @@ erDiagram
 | `INGESTED_ITEMS` | the **dedup hash table** — `content_hash` per source, checked before `cognee.add()`. |
 | `QUERY_LOG` | audit of natural-language queries (for analytics + rate-limit context). |
 
-> Refresh tokens are also stored hashed for revocation (see [authentication.md](./authentication.md));
-> that table is omitted from the diagram above for clarity.
+> The six tables above match the SQLAlchemy models under `backend/src/models/`. A hashed
+> refresh-token table is 🎯 roadmap (auth is a demo header today — see
+> [authentication.md](./authentication.md)); it does not exist yet.
 
 ## Indexes
 
@@ -109,7 +110,8 @@ Rules:
   migrations, column renames it sees as drop+add).
 - One logical change per migration; descriptive message.
 - Never edit an already-applied migration; add a new one.
-- Migrations run in CI/CD before the app starts (see [deployment.md](./deployment.md)).
+- Run `make migrate` after `make up`. (The initial schema migration is committed under
+  `backend/src/database/migrations/versions/`.)
 
 ## What is *not* in Postgres
 

@@ -29,6 +29,11 @@ frontend/src/
 
 See [folder-structure.md](./folder-structure.md) for the full tree.
 
+> **Status.** All screens and hooks below exist as files, but most call backend routes that are stubs
+> today (`GET /companies`, `/companies/{ticker}/price`, `/admin/jobs`, `/auth/*` all raise
+> `NotImplementedError`). So the pages render, but their data panels are empty. The one live path is
+> the company page's **query box** → `POST /companies/{ticker}/query`. See [api.md](./api.md).
+
 ## Screens
 
 ### Dashboard — `/dashboard`
@@ -84,7 +89,8 @@ React Query's cache layers on top of the backend Redis cache. GET retries use ex
 Each is wrapped by a hook (`useWatchlist`, `useCompanyPrice`, `useCompanyQuery`, `useJobRuns`).
 Request/response **types are generated from the backend OpenAPI spec** (see [api.md](./api.md)).
 
-## Deployment
+## Running it
 
-The frontend deploys to **Vercel** (native Next.js, edge caching, preview deployments). Set
-`NEXT_PUBLIC_API_BASE_URL` to the backend's `/api/v1` base. See [deployment.md](./deployment.md).
+Locally via Docker (`make up`) or natively (`cd frontend && pnpm dev`). Set
+`NEXT_PUBLIC_API_BASE_URL` to the backend's `/api/v1` base. See [setup.md](./setup.md). Cloud hosting
+(e.g. Vercel) is roadmap — there is no deployment config in the repo today.

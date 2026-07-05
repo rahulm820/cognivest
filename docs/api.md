@@ -1,128 +1,56 @@
 # API Reference
 
-REST/JSON, resource-oriented, versioned under `/api/v1`. This document reproduces the API summary
-from [ARCHITECTURE.md §7](../ARCHITECTURE.md) and gives request/response examples for the main
-endpoints.
+REST/JSON, versioned under `/api/v1`. The **live OpenAPI spec at `http://localhost:8000/docs`
+(and `/openapi.json`) is the source of truth** — this page is a hand-maintained companion.
 
-> **The live OpenAPI spec at `http://localhost:8000/docs` (and `/openapi.json`) is the source of
-> truth.** Frontend TypeScript types are generated from it. This page is a hand-maintained
-> companion — when they disagree, OpenAPI wins.
+## What's actually live
+
+Most routes are typed stubs that raise `NotImplementedError` (FastAPI returns a `500`). Only two paths
+are wired end-to-end today:
+
+| Endpoint | Method | Status |
+|---|---|---|
+| `/health`, `/api/v1/health` | GET | ✅ **live** |
+| `/companies/{ticker}/query` | POST | ✅ **live** (single-LLM recall) |
+| `/auth/login`, `/auth/refresh` | POST | 🎯 stub |
+| `/companies` (list/add) | GET / POST | 🎯 stub |
+| `/companies/{ticker}` (remove) | DELETE | 🎯 stub |
+| `/companies/{ticker}/price` | GET | 🎯 stub |
+| `/memory/store` · `/memory/search` · `/memory/context` · `/memory/reflection` · `/memory/delete` | POST/DELETE | 🎯 stub |
+| `/admin/jobs` | GET | 🎯 stub |
 
 ## Conventions
 
-- **Base path**: `/api/v1`.
-- **Auth**: `Authorization: Bearer <access_token>` (JWT RS256). See [authentication.md](./authentication.md).
-- **Internal endpoints** (`/memory/*`): network-isolated and additionally require a service token.
-- **Error envelope** (consistent across all endpoints):
+- **Base path:** `/api/v1`.
+- **Auth:** a demo **`X-User-Id`** header (default `demo-user`, role `admin`) — **not** JWT. No tokens
+  are verified. See [authentication.md](./authentication.md).
+- **Error envelope** (🎯 target contract; stub routes currently surface a plain `500`):
 
   ```json
   { "error": { "code": "string", "message": "string", "detail": "string | object | null" } }
   ```
 
-## Endpoint summary
+---
 
-| Endpoint | Method | Auth | Purpose |
-|---|---|---|---|
-| `/auth/login` | POST | none | issue JWT |
-| `/auth/refresh` | POST | refresh token | rotate JWT |
-| `/companies` | GET / POST | user | list / add watchlist tickers |
-| `/companies/{ticker}` | DELETE | user | remove from watchlist |
-| `/companies/{ticker}/price` | GET | user | price series |
-| `/companies/{ticker}/query` | POST | user | natural-language Q&A (wraps `/memory/search`) |
-| `/memory/store` | POST | internal | collector → Cognee ingestion |
-| `/memory/search` | POST | internal | Cognee retrieval |
-| `/memory/context` | POST | internal | pre-LLM context assembly |
-| `/memory/reflection` | POST | admin | trigger consolidation |
-| `/memory/delete` | DELETE | admin | purge memory |
-| `/admin/jobs` | GET | admin | ingestion health |
+## Health ✅
+
+### `GET /health` (and `GET /api/v1/health`)
+
+```json
+// Response 200
+{ "status": "ok", "service": "cognivest", "version": "…", "env": "development" }
+```
 
 ---
 
-## Auth
-
-### `POST /auth/login`
-
-Auth: none. Issues an access + refresh token pair.
-
-```json
-// Request
-{ "email": "user@example.com", "password": "..." }
-// Response 200
-{
-  "access_token": "eyJ...",
-  "refresh_token": "eyJ...",
-  "token_type": "bearer",
-  "expires_in": 900
-}
-```
-
-### `POST /auth/refresh`
-
-Auth: a valid (un-revoked) refresh token. Rotates the refresh token and issues a new access token.
-
-```json
-// Request
-{ "refresh_token": "eyJ..." }
-// Response 200
-{ "access_token": "eyJ...", "refresh_token": "eyJ...", "token_type": "bearer", "expires_in": 900 }
-```
-
-See [authentication.md](./authentication.md) for rotation and revocation.
-
----
-
-## Companies
-
-### `GET /companies`
-
-Auth: user. Lists the caller's watchlist.
-
-```json
-// Response 200
-{ "companies": [ { "id": "uuid", "ticker": "AAPL", "name": "Apple Inc.", "status": "active" } ] }
-```
-
-### `POST /companies`
-
-Auth: user. Adds a ticker to the watchlist → triggers collector registration + initial backfill.
-
-```json
-// Request
-{ "ticker": "AAPL" }
-// Response 201
-{ "id": "uuid", "ticker": "AAPL", "status": "backfilling" }
-```
-
-Validation: ticker format whitelist; unique per user.
-
-### `DELETE /companies/{ticker}`
-
-Auth: user. Removes the watchlist entry. **Does not** purge Cognee memory — that is a separate
-admin action (`DELETE /memory/delete`). See [memory-architecture.md](./memory-architecture.md) §lifecycle.
-
-```json
-// Response 204 (no content)
-```
-
-### `GET /companies/{ticker}/price?range=30d`
-
-Auth: user. Returns OHLCV price bars.
-
-```json
-// Response 200
-{
-  "ticker": "AAPL",
-  "bars": [
-    { "t": "2026-06-01", "o": 1, "h": 2, "l": 0.9, "c": 1.5, "v": 12345 }
-  ]
-}
-```
+## Query ✅ — the live path
 
 ### `POST /companies/{ticker}/query`
 
-Auth: user. Natural-language question scoped to the company. Internally calls
-`cognee.search()` / `recall(dataset_name=f"company_{ticker}", query=question, filters=date_range)`,
-then formats a cited answer via the LLM (see [prompting.md](./prompting.md)).
+Header: `X-User-Id: <id>` (optional; defaults to `demo-user`). Natural-language question scoped to the
+company. Internally: `MemoryService.answer` →
+`cognee.search(query_text=question, query_type=GRAPH_COMPLETION, datasets=[f"company_{ticker}"])`.
+This is **single-LLM** (Cognee's `GRAPH_COMPLETION` on Gemini) — there is no separate answer-formatter.
 
 ```json
 // Request
@@ -130,58 +58,58 @@ then formats a cited answer via the LLM (see [prompting.md](./prompting.md)).
   "question": "Why did the stock drop on March 3?",
   "date_range": { "from": "2026-02-25", "to": "2026-03-05" }
 }
-// Response 200
+```
+
+`date_range` is accepted and forwarded as intent, but cognee 1.2.2's `search()` has **no** native date
+filter (spike CONTRADICTION #1), so it does not slice results today.
+
+```json
+// Response 200 — with ingested data
 {
-  "answer": "The stock fell ~8% on March 3 after [1] reported a supply-chain warning ...",
-  "citations": [
-    { "title": "Apple warns on supply chain", "url": "https://...", "published_at": "2026-03-03T10:00:00Z" }
-  ],
+  "answer": "The stock fell ~8% on March 3 after the company cut guidance …",
+  "citations": [],
   "graph_snippet": { "nodes": [], "edges": [] }
 }
 ```
 
-Rate-limited per user (`QUERY_RATE_LIMIT_PER_MINUTE`) for LLM cost control.
-
----
-
-## Memory (internal)
-
-These endpoints are the backend wrapper surface over Cognee. They are **internal-only**:
-network-isolated and require a service token in addition to (where noted) an admin role. They are
-documented here for completeness; application code reaches them through `memory_service.py`, never
-the frontend. See [memory-architecture.md](./memory-architecture.md) and
-[ARCHITECTURE.md §5.7](../ARCHITECTURE.md).
-
-| Endpoint | Maps to |
-|---|---|
-| `POST /memory/store` | `cognee.add(content, dataset_name=f"company_{ticker}")` then `cognee.cognify()` |
-| `POST /memory/search` | `cognee.search()` / `recall(dataset_name=…, query=…, filters=…)` |
-| `POST /memory/context` | returns the assembled context block (chunks + graph snippet) for prompt injection |
-| `POST /memory/reflection` | triggers a consolidation / cognify pass (admin) |
-| `DELETE /memory/delete` | removes a dataset or a date-bounded slice (admin) |
-
 ```json
-// POST /memory/search — Request
-{ "ticker": "AAPL", "query": "supply chain", "filters": { "from": "2026-02-25", "to": "2026-03-05" }, "top_k": 8 }
-// Response 200
-{ "results": [ { "text": "...", "score": 0.82, "source_url": "https://...", "published_at": "..." } ] }
-```
-
----
-
-## Admin
-
-### `GET /admin/jobs`
-
-Auth: admin. Ingestion health per company.
-
-```json
-// Response 200
+// Response 200 — empty dataset (honest, not fabricated)
 {
-  "jobs": [
-    { "ticker": "AAPL", "type": "news", "last_run": "2026-06-30T08:00:00Z", "items_ingested": 12, "status": "success" }
-  ]
+  "answer": "No data has been ingested yet for AAPL, so there is nothing to answer from. …",
+  "citations": [],
+  "graph_snippet": { "nodes": [], "edges": [] }
 }
 ```
 
-See the [ingestion-failure runbook](./runbooks/ingestion-failure.md) for interpreting failures.
+Citations are derived **only** from real retrieval metadata; when none is available the list is empty
+rather than fabricated. Rate-limited per user (`QUERY_RATE_LIMIT_PER_MINUTE`).
+
+---
+
+## Stubbed routes (🎯 designed, not implemented)
+
+The endpoints below validate their schemas but raise `NotImplementedError`. Their intended shapes:
+
+### Auth — `POST /auth/login`, `POST /auth/refresh`
+Target: issue / rotate an RS256 JWT pair. Not enforced today (demo header auth).
+
+### Companies — `GET /companies`, `POST /companies`, `DELETE /companies/{ticker}`, `GET /companies/{ticker}/price`
+Target: watchlist CRUD + OHLCV price series backed by Postgres + a market-data vendor.
+
+### Memory (internal) — `/memory/*`
+The intended backend wrapper over the Cognee seam. **Routes are stubs; the seam methods they will call
+are implemented** ([memory-architecture.md](./memory-architecture.md)):
+
+| Endpoint | Maps to |
+|---|---|
+| `POST /memory/store` | `cognee.add(dataset_name=…)` then `cognee.cognify(datasets=[…])` |
+| `POST /memory/search` | `cognee.search(query_text=…, query_type=GRAPH_COMPLETION, datasets=[…])` |
+| `POST /memory/context` | assembled context block for the query path |
+| `POST /memory/reflection` | a consolidation / cognify pass |
+| `DELETE /memory/delete` | `cognee.forget(dataset="company_{ticker}")` |
+
+Note: `search` in 1.2.2 takes `datasets=` (plural) and has **no** `dataset_name=`/`filters=` params.
+The `/memory/*` service-token guard is a no-op in the demo ([authentication.md](./authentication.md)).
+
+### Admin — `GET /admin/jobs`
+Target: ingestion health per company, backed by the `INGESTION_JOBS` table.

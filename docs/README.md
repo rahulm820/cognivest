@@ -2,9 +2,12 @@
 
 Welcome to the Cognivest documentation. Cognivest is a **per-company financial
 intelligence platform powered by [Cognee](https://github.com/topoteretes/cognee)**: for each
-watchlisted ticker it continuously ingests **price data** and **news/web content** into Cognee,
-which builds a per-company knowledge graph and answers natural-language questions with ranked,
-cited answers.
+watchlisted ticker it ingests **price data** and **news/web content** into Cognee, which builds a
+per-company knowledge graph and answers natural-language questions with grounded answers.
+
+> **Hackathon build.** One route is live end-to-end (`POST /companies/{ticker}/query`); many features
+> are scaffolds. Docs are tagged ✅ built / 🎯 target where it matters — see the README's *Limitations*
+> section and [CLAUDE.md §15](../CLAUDE.md).
 
 > The product is a **thin orchestration + presentation shell around Cognee**. The hard
 > intelligence (entity extraction, embedding, graph build, retrieval, reranking) lives inside
@@ -32,19 +35,13 @@ These docs expand on specific areas and are kept consistent with both.
 - [Frontend](./frontend.md) — Next.js app structure, screens, state management, API services.
 - [Memory Architecture](./memory-architecture.md) — **the Cognee deep-dive** (add → cognify → search).
 - [Database](./database.md) — operational Postgres schema, indexes, migrations.
-- [Authentication](./authentication.md) — JWT RS256, OAuth, RBAC, internal service tokens.
-- [Prompting](./prompting.md) — the answer-formatter prompt design and prompt-injection guard.
+- [Authentication](./authentication.md) — the demo `X-User-Id` identity (JWT/OAuth is roadmap).
+- [Prompting](./prompting.md) — single-LLM answer generation today; the formatter design is roadmap.
 
 ### Reference
-- [API Reference](./api.md) — full REST API reference (OpenAPI is the live source of truth).
-- [Deployment](./deployment.md) — Vercel + Kubernetes/Helm + Terraform + CI/CD, plus the MVP path.
+- [API Reference](./api.md) — REST API with a live-vs-stubbed status matrix (OpenAPI is the source of truth).
 - [Roadmap](./roadmap.md) — the 7-phase roadmap and future enhancements.
-
-### Operations
-- [Runbooks](./runbooks/README.md) — on-call runbooks index.
-  - [Ingestion Failure](./runbooks/ingestion-failure.md)
-  - [Cognify Backlog](./runbooks/cognify-backlog.md)
-  - [High Query Latency](./runbooks/high-query-latency.md)
+- [Cognee 1.2.2 spike](./spike-cognee-1.2.2.md) — verified SDK signatures + round-trip (ground truth).
 
 ## The one rule you must never break
 

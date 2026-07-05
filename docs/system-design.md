@@ -1,7 +1,9 @@
 # System Design — overview
 
-A condensed overview of Cognivest. The exhaustive design is in
-[ARCHITECTURE.md](../ARCHITECTURE.md) (the single source of truth); this page is a map into it.
+A condensed overview of Cognivest. The full design vision is in
+[ARCHITECTURE.md](../ARCHITECTURE.md) (with built-vs-target tags throughout); this page is a map into
+it. The diagrams below are the **target** architecture — today only the query/recall path is wired
+end-to-end (see the README *Limitations* section).
 
 ## What it is
 
@@ -104,16 +106,17 @@ flowchart LR
 |---|---|
 | Frontend | Next.js 14, TypeScript, Tailwind + shadcn/ui, TanStack Query, Zustand, Recharts, Axios |
 | Backend | Python 3.11, FastAPI, Pydantic v2, SQLAlchemy 2.x + Alembic |
-| Workers | Celery + Redis broker, Celery Beat (queues: `price`, `news`, `cognify`) |
-| Memory / AI | Cognee SDK + Anthropic Claude (answer generation) |
-| Data | PostgreSQL, Redis, Cognee-managed vector + graph stores |
+| Workers | Celery + Redis broker, Celery Beat (queues: `price`, `news`, `cognify`) — 🎯 tasks stubbed |
+| Memory / AI | Cognee 1.2.2 SDK; **Gemini** (`gemini/gemini-2.5-flash`) LLM; **fastembed** (local) embeddings |
+| Data | PostgreSQL, Redis, Cognee-managed **LanceDB** (vector) + **Kuzu** (graph) |
 
 ## Key invariants
 
-- **Cognee is a single seam** — imported only in `backend/src/memory/cognee_client.py`.
-- **One dataset per ticker** — `company_{ticker}`; price + news share it; never cross-query.
-- **Auth secures the app layer only**; Cognee is internal + network-isolated.
-- **Retrieved content is data, not instructions** (prompt-injection guard).
+- **Cognee is a single seam** — imported only in `backend/src/memory/cognee_client.py`. ✅
+- **One dataset per ticker** — `company_{ticker}`; price + news share it; never cross-query. ✅
+- **Single-LLM answers** — Cognee `GRAPH_COMPLETION` (Gemini); no separate answer-formatter. ✅
+- **Auth is a demo `X-User-Id` header today** — real JWT/OAuth is roadmap ([authentication.md](./authentication.md)).
+- **Retrieved content is data, not instructions** (prompt-injection design stance).
 
 ## Where to go next
 
@@ -125,5 +128,5 @@ flowchart LR
 | API reference | [api.md](./api.md) |
 | Database schema | [database.md](./database.md) |
 | Auth model | [authentication.md](./authentication.md) |
-| Deployment | [deployment.md](./deployment.md) |
+| Cognee spike (ground truth) | [spike-cognee-1.2.2.md](./spike-cognee-1.2.2.md) |
 | Roadmap | [roadmap.md](./roadmap.md) |
