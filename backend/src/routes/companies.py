@@ -117,16 +117,20 @@ async def query_company(
     except NotImplementedError:
         pass
 
-    # 3. Session identity for future per-user memory (#10/#11): prefer the caller-supplied
-    #    X-User-Id, else mint a per-request id. Threaded into MemoryService (held there).
+    # 3. Session + user identity for per-user memory (#10/#11):
+    #    - session_id keys Cognee's session cache; prefer X-User-Id, else a per-request id.
+    #    - user_id enables cross-session memory (preferences + Q&A history) and is ONLY the
+    #      caller-supplied X-User-Id — anonymous callers (no header) stay fully stateless.
+    #    Raw header sanitization into a safe ``user_{id}`` dataset happens in the seam.
     session_id = x_user_id or uuid4().hex
 
-    # 4. Single-LLM answer via the memory seam.
+    # 4. Single-LLM answer via the memory seam (personalized when X-User-Id is present).
     result = await get_memory_service().answer(
         normalized,
         payload.question,
         date_range=payload.date_range,
         session_id=session_id,
+        user_id=x_user_id,
     )
     return QueryResponse(
         answer=result.answer,

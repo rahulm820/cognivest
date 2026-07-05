@@ -46,7 +46,7 @@ except ImportError:  # pragma: no cover
     DatasetNotFoundError = None  # type: ignore[assignment,misc]
 
 from src.config.logging import get_logger
-from src.memory.dataset_naming import dataset_name
+from src.memory.dataset_naming import dataset_name, user_dataset_name
 
 logger = get_logger(__name__)
 
@@ -55,6 +55,13 @@ logger = get_logger(__name__)
 # generated answer in ``result["search_result"]``. Kept internal so callers never
 # depend on Cognee's ``SearchType``.
 _SEARCH_TYPE = SearchType.GRAPH_COMPLETION if SearchType is not None else None
+
+# Per-user memory retrieval (issue #11) uses CHUNKS: it returns the raw stored
+# preference/history text via vector lookup WITHOUT a completion LLM, so pulling a
+# user's context adds no second GRAPH_COMPLETION round-trip to the query path. User
+# results are deliberately NOT run through the provenance/reference parser, so user
+# memory can never surface as a news citation.
+_USER_SEARCH_TYPE = SearchType.CHUNKS if SearchType is not None else None
 
 # Provenance header markers. Citation fields are embedded as a delimited, terminated
 # header at the top of each ingested document (Cognee's ``add`` has no metadata
@@ -419,6 +426,103 @@ class CogneeClient:
             )
         logger.debug("cognee.forget", dataset=dataset)
         await cognee.forget(dataset=dataset)
+
+    # ---------------------------------------------------- per-user memory (#11)
+    #
+    # These are ADDITIVE, parallel to the per-ticker methods above. They target the
+    # ``user_{id}`` dataset family (see ``dataset_naming.user_dataset_name``) instead
+    # of ``company_{ticker}``, keeping per-user session memory strictly isolated from
+    # per-company memory. They do NOT change any existing method's signature.
+
+    async def add_user_memory(
+        self, user_id: str, content: str, *, metadata: dict[str, Any] | None = None
+    ) -> None:
+        """Add per-user session memory to the user's dataset (``cognee.add``).
+
+        Mirrors :meth:`add` but targets ``user_{id}``. Used for stated preferences
+        and Q&A-interaction history. Preferences are stored WITHOUT citation metadata
+        (they are not sources), so they cannot masquerade as a news citation.
+
+        Args:
+            user_id: Raw ``X-User-Id``; resolved to ``user_{id}`` (sanitized).
+            content: Normalized text to remember for this user.
+            metadata: Optional provenance header fields (normally unused for user
+                memory).
+        """
+        _require_sdk()
+        dataset = user_dataset_name(user_id)
+        text = self._with_provenance(content, metadata)
+        logger.debug("cognee.add.user", dataset=dataset, has_metadata=metadata is not None)
+        await cognee.add(text, dataset_name=dataset, node_set=[dataset])
+
+    async def cognify_user(self, user_id: str) -> None:
+        """Build/update a user's session-memory graph (``cognee.cognify``).
+
+        Mirrors :meth:`cognify` but targets ``user_{id}``. Callers run this OFF the
+        query path (detached background task) because cognify is ~30-60s.
+
+        Args:
+            user_id: Raw ``X-User-Id``; resolved to ``user_{id}`` (sanitized).
+        """
+        _require_sdk()
+        dataset = user_dataset_name(user_id)
+        logger.debug("cognee.cognify.user", dataset=dataset)
+        await cognee.cognify(datasets=[dataset])
+
+    async def search_user_memory(
+        self,
+        user_id: str,
+        query: str,
+        *,
+        top_k: int = 5,
+        session_id: str | None = None,
+    ) -> list[str]:
+        """Retrieve raw per-user memory chunks from ``user_{id}`` (``cognee.search``).
+
+        Uses ``SearchType.CHUNKS`` (no completion LLM) and returns the raw stored
+        text chunks, so pulling a user's context is cheap and adds no second
+        GRAPH_COMPLETION round-trip. Results are intentionally NOT passed through the
+        provenance/reference parser: user memory must never become a citation.
+
+        No-data resilience: a brand-new user (dataset absent) or a fresh, uninitialized
+        store raises the same "no data" signatures as :meth:`search`; those map to an
+        empty list so a first-time / unknown user simply yields no personalization
+        context rather than a 500. Every other error re-raises.
+
+        Args:
+            user_id: Raw ``X-User-Id``; resolved to ``user_{id}`` (sanitized).
+            query: Retrieval query (e.g. a fixed "user's stated interests" probe).
+            top_k: Maximum number of chunks to return.
+            session_id: Optional session id, forwarded for session-aware retrieval.
+
+        Returns:
+            A list of raw memory-chunk strings (empty when the user has no memory yet).
+        """
+        _require_sdk()
+        dataset = user_dataset_name(user_id)
+        logger.debug("cognee.search.user", dataset=dataset, top_k=top_k)
+        try:
+            results = await cognee.search(
+                query_text=query,
+                query_type=_USER_SEARCH_TYPE,
+                datasets=[dataset],
+                top_k=top_k,
+                session_id=session_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - re-raised unless it is a no-data signal
+            if _is_no_data_error(exc):
+                logger.info("cognee.search.user.no_data", dataset=dataset)
+                return []
+            raise
+        chunks: list[str] = []
+        for result in results:
+            data = self._result_to_dict(result)
+            payload = data.get("search_result")
+            if isinstance(payload, list):
+                chunks.extend(str(entry).strip() for entry in payload if str(entry).strip())
+            elif isinstance(payload, str) and payload.strip():
+                chunks.append(payload.strip())
+        return chunks
 
 
 _client: CogneeClient | None = None
