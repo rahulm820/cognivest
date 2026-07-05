@@ -1,7 +1,5 @@
 # Setup
 
-<!-- FINAL-VERIFY July 5 -->
-
 This guide gets Cognivest running locally. Two paths:
 
 - **Docker path** (recommended) — the whole stack via `docker compose`.
@@ -49,16 +47,27 @@ Optionally change `POSTGRES_PASSWORD` from `change_me`. Every variable is docume
 ## Docker path (recommended)
 
 ```bash
-make up        # docker compose up -d --build (postgres, redis, backend, worker, beat, frontend)
-make migrate   # apply Alembic migrations (alembic upgrade head)
-make seed      # seed demo companies (AAPL, MSFT, TSLA) + a demo user into Postgres
+docker compose up -d --build                                             # postgres, redis, backend, worker, beat, frontend
+docker compose exec backend alembic upgrade head                         # apply Alembic migrations
+docker compose exec backend python -m scripts.seed                       # demo companies (AAPL, MSFT, TSLA) + a demo user
+docker compose exec backend python -m scripts.backfill_ticker --ticker AAPL   # live price action (yfinance) → Cognee
+docker compose exec backend python -m scripts.ingest_demo_corpus --ticker AAPL # curated AAPL news corpus → Cognee
 ```
+
+> These are also wrapped as `make` targets (`make up`, `make migrate`, `make seed`,
+> `make backfill t=AAPL`) — the `docker compose exec` form above is the canonical path.
+> The final `cognify` inside each ingest step takes ~30–60s; give it a moment before querying.
 
 Then:
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - **Live OpenAPI docs (source of truth): http://localhost:8000/docs**
+
+> **Gemini free-tier quota (`429`/`503`).** The free tier is ~20 requests/day per model. Swap `LLM_MODEL`
+> between `gemini/gemini-2.5-flash` and `gemini/gemini-2.5-flash-lite` (separate quotas), or use a fresh
+> key from a different Google Cloud project, then `docker compose up -d` to restart. Local fastembed
+> embeddings are unaffected, so no re-ingest is needed.
 
 Useful lifecycle targets:
 
@@ -106,12 +115,15 @@ Set `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1` in `.env`.
 
 ## First-run checklist
 
-1. `make up` — all containers healthy (`make ps`).
-2. `make migrate` succeeds.
+1. `docker compose up -d --build` — all containers healthy (`docker compose ps`).
+2. `alembic upgrade head` succeeds.
 3. http://localhost:8000/docs — OpenAPI loads; `GET /health` returns `{"status":"ok"}`.
-4. `make seed` — demo companies + user inserted.
-5. http://localhost:3000 — dashboard renders (watchlist/price come from stubbed endpoints, so most
-   panels are empty; the company-page query box is the live path).
+4. `python -m scripts.seed` — demo companies + user inserted.
+5. `python -m scripts.backfill_ticker --ticker AAPL` then `python -m scripts.ingest_demo_corpus --ticker AAPL`
+   — AAPL price + news land in Cognee (each ends with a ~30–60s `cognify`).
+6. http://localhost:3000 — dashboard renders (watchlist/price come from stubbed endpoints, so most
+   panels are empty). Open the AAPL company page and ask a question — after step 5 the query box returns
+   a grounded, cited answer; before it (or for MSFT/TSLA) it honestly answers "no data ingested yet."
 
 Quality checks: `make lint` (ruff + black + mypy + eslint + prettier), `make fmt` (auto-format),
 `make typecheck` (mypy + tsc). There is no `make test` target yet.
