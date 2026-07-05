@@ -67,16 +67,20 @@ class MemoryService:
         content: str,
         *,
         metadata: dict[str, Any] | None = None,
+        cognify: bool = True,
     ) -> None:
-        """Add content to a ticker's dataset, then trigger the graph build.
+        """Add content to a ticker's dataset, then (optionally) build the graph.
 
         Orchestrates ``cognee.add`` followed by ``cognify`` (via :meth:`reflect`).
-        This path is Celery-free: it awaits inline. Production queue-decoupling of
-        ``cognify`` (CLAUDE.md §7.4) is deferred to the collection/worker issues and
-        is not on the query path this service serves.
+        This path is Celery-free: it awaits inline.
+
+        Batch ingestion (issue #8's collectors) passes ``cognify=False`` to add many
+        items cheaply, then calls :meth:`reflect` once — ``cognify`` is the expensive
+        step and must not run per item.
         """
         await self._client.add(ticker, content, metadata=metadata)
-        await self.reflect(ticker)
+        if cognify:
+            await self.reflect(ticker)
 
     async def answer(
         self,
