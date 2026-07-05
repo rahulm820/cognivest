@@ -26,8 +26,11 @@ WORKDIR /app
 
 # Install Python deps first for layer caching. requirements.txt mirrors
 # pyproject.toml's runtime deps (see backend/requirements.txt header).
+# --timeout/--retries harden against slow PyPI downloads: cognee[fastembed]
+# pulls a large wheel tree (onnxruntime, ...) that overruns pip's 15s default
+# socket timeout on slower networks (a recurring fresh-build failure, issue #13).
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install -r requirements.txt
+RUN pip install --timeout 300 --retries 10 -r requirements.txt
 
 # Copy the app source. In dev compose this is overlaid by a bind mount of
 # ./backend, so edits on the host hot-reload inside the container.

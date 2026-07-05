@@ -58,10 +58,15 @@ cp .env.example .env
 # Open .env and set ONE value:  LLM_API_KEY=<your Gemini key>
 #   (LLM_PROVIDER=gemini and EMBEDDING_PROVIDER=fastembed are already set correctly)
 
-make up        # build + start postgres, redis, backend, worker, beat, frontend
-make migrate   # apply Alembic migrations
-make seed      # seed demo companies (AAPL, MSFT, TSLA) + a demo user
+make up             # build + start postgres, redis, backend, worker, beat, frontend
+make migrate        # apply Alembic migrations
+make seed           # seed demo companies (AAPL, MSFT, TSLA) + a demo user
+make backfill t=AAPL  # ingest AAPL prices (yfinance) + news (GDELT) into Cognee
 ```
+
+> `make backfill` populates a ticker's memory so queries have something to answer.
+> It fetches prices + news, then runs Cognee's `cognify` (graph build) — the cognify
+> step calls the LLM, so it needs your `LLM_API_KEY` set and a minute or so to finish.
 
 Then:
 
@@ -72,8 +77,13 @@ Then:
 > Stale `.env` files from earlier revisions carry a dead LLM config (an Anthropic/`claude-opus`
 > setup that no longer exists) and will not work.
 
-Only `LLM_API_KEY` is required to boot. Vendor keys (market data, news, web search) are for
-collectors that are still in progress — see **Limitations** below.
+Only `LLM_API_KEY` is required — for both booting *and* the demo. The price (yfinance) and
+news (GDELT) collectors are **keyless**, so no market-data or news vendor key is needed. The
+unused vendor-key fields in `.env.example` are for pluggable alternatives — see **Limitations** below.
+
+> **Deployment:** the demo runs entirely on your machine via Docker Compose — there is **no hosted
+> or Vercel deployment**, and none is needed. This is the deliberate lower-risk demo path: `make up`
+> brings the whole stack (frontend + backend + Postgres + Redis) up locally on one command.
 
 ---
 

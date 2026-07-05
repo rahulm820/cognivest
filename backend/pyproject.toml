@@ -27,7 +27,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3",
     "passlib[bcrypt]>=1.7",
     "httpx>=0.27",
-    "structlog>=24.1",
+    "structlog>=24.1,<26.0",
     "yfinance>=0.2",  # keyless market-data vendor for price history (issue #8)
 ]
 
