@@ -158,20 +158,40 @@ sequenceDiagram
 | **Creation** | `add()` + `cognify()` from the ingestion path. | seam ✅ / collector path 🎯 |
 | **Recall** | `search()` / `recall()` scoped to the dataset. | ✅ (live `/query`) |
 | **Improvement** | `improve()` folds answer feedback into graph weights (`FeedbackEntry`). | Cognee supports it (spike §2); **seam wiring 🎯** |
-| **Deletion** | Whole-ticker purge via `forget(dataset="company_{ticker}")`. `DELETE /companies/{ticker}` would remove only the watchlist entry; purging memory is a separate admin action. | seam ✅ / routes 🎯 |
+| **Deletion** | Whole-ticker purge via `forget(dataset="company_{ticker}")`. `DELETE /companies/{ticker}` would remove only the watchlist entry; purging memory is a separate admin action. | seam ✅ / `DELETE /memory/delete` ✅ / CLI ✅ |
 | **Consolidation / forgetting** | Periodic `cognify()`/reflection passes and TTL pruning. | 🎯 (Cognee capability, not scheduled) |
+
+### Forget — the real mechanism (issue #9)
+
+**Cognee 1.2.2 can only forget a *whole* dataset.** There is no per-item or date-sliced
+delete (spike CONTRADICTION #2), and our Postgres dedup ledger stores only content hashes,
+not the original text — so an in-place "delete just the stale rows" is not possible. We are
+explicit about this rather than inventing a fictional API:
+
+- **Full purge** (`DELETE /memory/delete`, or `make purge t=AAPL`): `forget(company_{ticker})`
+  clears the whole dataset, and the ticker's dedup-ledger rows are deleted so a later
+  re-backfill isn't skipped by the dedup check. The dataset is left empty.
+- **Staleness purge** (`make purge t=AAPL keep=7`): forget the whole dataset + clear the
+  ledger, then **re-backfill only the last N days**. This is a *rebuild from current sources*,
+  not an in-place slice — items that have aged out of the collectors' N-day window simply do
+  not come back; recent ones are restored. The retained window `N` is the re-backfill window.
+
+The demonstrable lifecycle (`scripts/demo_forget.py`): query cites an ingested article →
+forget → the same query falls back to the honest "no data ingested yet" answer with no
+citations. Memory demonstrably changed.
 
 ## Backend wrapper surface
 
-The `/memory/*` endpoints are the intended internal wrapper over the seam. **The routes are stubs
-today** (`NotImplementedError`); the seam methods they will call are implemented:
+The `/memory/*` endpoints are the intended internal wrapper over the seam. **Most routes are
+still stubs** (`NotImplementedError`) — `DELETE /memory/delete` is wired (issue #9); the seam
+methods the others will call are implemented:
 
 ```text
-POST   /memory/store      → cognee.add(dataset_name=…) then cognee.cognify(datasets=[…])
-POST   /memory/search     → cognee.search(query_text=…, query_type=GRAPH_COMPLETION, datasets=[…])
-POST   /memory/context    → assembled context block for the query path
-POST   /memory/reflection → consolidation / cognify pass
-DELETE /memory/delete     → cognee.forget(dataset="company_{ticker}")
+POST   /memory/store      → cognee.add(dataset_name=…) then cognee.cognify(datasets=[…])   (stub)
+POST   /memory/search     → cognee.search(query_text=…, query_type=GRAPH_COMPLETION, datasets=[…])  (stub)
+POST   /memory/context    → assembled context block for the query path                     (stub)
+POST   /memory/reflection → consolidation / cognify pass                                   (stub)
+DELETE /memory/delete     → cognee.forget(dataset="company_{ticker}") + clear dedup ledger ✅
 ```
 
 See [authentication.md](./authentication.md) (the `/memory/*` guard is a no-op in the demo) and

@@ -88,8 +88,8 @@ backfill: ## Backfill a ticker into Postgres + cognee: make backfill t=AAPL
 	docker compose exec backend python -m scripts.backfill_ticker --ticker $(t)
 
 .PHONY: purge
-purge: ## Purge a Cognee dataset: make purge t=AAPL
-	cd $(BACKEND_DIR) && python scripts/purge_dataset.py --ticker $(t)
+purge: ## Forget a ticker's Cognee dataset + ledger: make purge t=AAPL [keep=7]
+	docker compose exec backend python -m scripts.purge_dataset --ticker $(t) --yes $(if $(strip $(keep)),--older-than-days $(keep))
 
 # ---- Setup -----------------------------------------------------------
 .PHONY: install

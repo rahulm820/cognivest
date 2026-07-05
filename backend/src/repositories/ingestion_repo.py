@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import exists, select
+from sqlalchemy import delete, exists, select
 
 from src.models.ingested_item import IngestedItem
 from src.repositories.base import BaseRepository
@@ -49,3 +49,16 @@ class IngestionRepository(BaseRepository[IngestedItem]):
                 source_url=source_url,
             )
         )
+
+    async def delete_for_company(self, company_id: uuid.UUID) -> int:
+        """Delete every dedup-ledger row for a company; return the row count.
+
+        Used by the forget/purge lifecycle (issue #9): after Cognee's whole-dataset
+        ``forget()`` the ledger must be cleared too, so a subsequent re-backfill is
+        not skipped by the dedup check and can repopulate the (now empty) dataset.
+        The caller owns the transaction (commit/rollback).
+        """
+        result = await self.session.execute(
+            delete(IngestedItem).where(IngestedItem.company_id == company_id)
+        )
+        return int(result.rowcount or 0)
