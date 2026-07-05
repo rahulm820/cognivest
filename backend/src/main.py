@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from src import __version__
 from src.config.logging import configure_logging, get_logger
@@ -69,6 +70,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health_v1() -> dict[str, Any]:
         """Versioned health probe."""
         return _health_payload(settings)
+
+    # Scaffold-honest error contract: routes/services that are still typed stubs raise
+    # NotImplementedError. Map that to a 501 envelope so unimplemented endpoints return an
+    # honest "not built yet" instead of a raw 500. This only fires when NotImplementedError
+    # *escapes* a handler — the live query path catches its own in-path NotImplementedError
+    # (see routes/companies.py and services/memory_service.py) and stays a 200, so the
+    # no-data query flow is unaffected.
+    @app.exception_handler(NotImplementedError)
+    async def _not_implemented_handler(
+        _request: Request, _exc: NotImplementedError
+    ) -> JSONResponse:
+        """Return a 501 for endpoints still stubbed out in the hackathon scaffold."""
+        return JSONResponse(
+            status_code=501,
+            content={"detail": "Not implemented — hackathon scope. See README limitations."},
+        )
 
     # Mount all v1 routers.
     app.include_router(api_router, prefix=settings.api_v1_prefix)

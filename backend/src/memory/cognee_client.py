@@ -213,27 +213,72 @@ class CogneeClient:
         return _PROVENANCE_RE.sub("", text).strip()
 
     @staticmethod
+    def _provenance_fields(span: str, *, terminated: bool) -> dict[str, str]:
+        """Lift recognized ``key=value`` pairs out of one provenance span body.
+
+        Fields are ``key=value`` pairs joined by ``|``. For an un-terminated span (its
+        ``[/PROVENANCE]`` was truncated away by Cognee's snippet cap) the trailing
+        segment carries no closing delimiter, so it may be a value cut mid-way — it is
+        dropped rather than emitted half-cut. Only a segment that a delimiter proved
+        complete is trusted. ``source_url``/``published_at`` are emitted *before*
+        ``title`` (see :meth:`_with_provenance`), so they survive truncation.
+        """
+        segments = span.split("|")
+        if not terminated and segments:
+            segments = segments[:-1]
+        fields: dict[str, str] = {}
+        for segment in segments:
+            key, sep, value = segment.partition("=")
+            if not sep:
+                continue
+            key = key.strip()
+            value = value.strip()
+            if key in _CITATION_FIELDS and value:
+                fields.setdefault(key, value)
+        return fields
+
+    @staticmethod
     def _parse_provenance(text: str) -> list[dict[str, str]]:
         """Parse ``[PROVENANCE] key=value | … [/PROVENANCE]`` spans into dicts.
 
         Returns one ``{title, source_url, published_at}`` dict per span, keeping only
-        recognized, non-empty fields. Only fully-terminated spans are parsed: a header
-        whose ``[/PROVENANCE]`` was truncated away by Cognee's snippet cap is skipped
-        rather than emitted with a body-polluted ``title`` — we never fabricate fields.
+        recognized, non-empty fields.
+
+        Cognee's Evidence block renders each cited chunk as a snippet capped at ~160
+        chars, which routinely truncates the header's trailing ``[/PROVENANCE]`` (and a
+        tail of the last ``title=`` value) away. So a span is bounded by its
+        ``[/PROVENANCE]`` terminator when present, otherwise by the next span, a quote/
+        newline Evidence-bullet boundary, or end-of-text. For an un-terminated span the
+        final (possibly half-cut) field is dropped — never emitted mid-value — while the
+        earlier complete pairs (``source_url``/``published_at``, emitted first) survive.
+        This is what keeps citations non-empty on real, truncated Evidence.
         """
         if not text or _PROVENANCE_OPEN not in text:
             return []
         refs: list[dict[str, str]] = []
-        for span in _PROVENANCE_RE.findall(text):
-            fields: dict[str, str] = {}
-            for segment in span.split("|"):
-                key, sep, value = segment.partition("=")
-                if not sep:
-                    continue
-                key = key.strip()
-                value = value.strip()
-                if key in _CITATION_FIELDS and value:
-                    fields.setdefault(key, value)
+        open_len = len(_PROVENANCE_OPEN)
+        idx = 0
+        while True:
+            start = text.find(_PROVENANCE_OPEN, idx)
+            if start == -1:
+                break
+            body_start = start + open_len
+            close = text.find(_PROVENANCE_CLOSE, body_start)
+            next_open = text.find(_PROVENANCE_OPEN, body_start)
+            terminated = close != -1 and (next_open == -1 or close < next_open)
+            if terminated:
+                span = text[body_start:close]
+                idx = close + len(_PROVENANCE_CLOSE)
+            else:
+                end = next_open if next_open != -1 else len(text)
+                span = text[body_start:end]
+                # An un-terminated header has no explicit right edge, so stop at the
+                # first quote/newline: the Evidence-bullet delimiter that bounds it.
+                boundary = re.search(r'["\n\r]', span)
+                if boundary:
+                    span = span[: boundary.start()]
+                idx = end
+            fields = CogneeClient._provenance_fields(span, terminated=terminated)
             ref = {key: fields[key] for key in _CITATION_FIELDS if key in fields}
             if ref:
                 refs.append(ref)
