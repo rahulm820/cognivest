@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import type { QueryResponse } from "@/types";
 import { CitationChip } from "@/components/common";
 import { FeedbackControls } from "./FeedbackControls";
@@ -25,10 +26,21 @@ function AnswerSkeleton() {
   );
 }
 
+/** Short "just now / N min ago" label, captured when the answer arrives. */
+function useAnsweredAt(answer?: QueryResponse) {
+  const [at, setAt] = React.useState<Date | null>(null);
+  React.useEffect(() => {
+    if (answer) setAt(new Date());
+    else setAt(null);
+  }, [answer]);
+  return at;
+}
+
 /**
  * Renders a query answer: text fades in, then (on the `showChips` beat) citation
  * chips stagger in beneath it, then feedback controls. The chart-marker beat is
- * driven by the parent workspace, not here.
+ * driven by the parent workspace, not here. A thin emerald left-accent marks
+ * this as a grounded, cited response.
  */
 export function AnswerPanel({
   answer,
@@ -38,8 +50,10 @@ export function AnswerPanel({
   isError,
   showChips = false,
 }: AnswerPanelProps) {
+  const answeredAt = useAnsweredAt(isLoading || isError ? undefined : answer);
+
   return (
-    <div className="rounded-xl border border-border bg-surface p-4 shadow-elevated">
+    <div className="rounded-xl border border-l-2 border-border border-l-primary/70 bg-surface p-4 shadow-elevated">
       {isLoading ? (
         <AnswerSkeleton />
       ) : isError ? (
@@ -48,7 +62,7 @@ export function AnswerPanel({
         </p>
       ) : answer ? (
         <>
-          <p className="animate-fade-in-up text-[15px] leading-relaxed text-foreground">
+          <p className="animate-fade-in-up max-w-[65ch] text-[15px] leading-[1.65] text-foreground">
             {answer.answer}
           </p>
 
@@ -69,6 +83,12 @@ export function AnswerPanel({
           ) : null}
 
           <FeedbackControls ticker={ticker} question={question} />
+
+          {answeredAt ? (
+            <div className="mt-3 text-right text-[11px] tabular-nums text-text-muted">
+              answered {answeredAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          ) : null}
         </>
       ) : null}
     </div>

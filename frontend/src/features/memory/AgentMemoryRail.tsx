@@ -1,11 +1,48 @@
 "use client";
 
 import * as React from "react";
-import { Brain, Pencil, Check, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Brain, Pencil, Check, Clock, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useUiStore, DEFAULT_IDENTITY } from "@/store";
 import { cn } from "@/utils/cn";
 
 const HINT = "try: remember: I care about supply-chain risk";
+
+/** How long a freshly-remembered chip shows "consolidating…" before settling. */
+const CONSOLIDATE_MS = 60_000;
+
+/**
+ * Tracks which session memories are still "consolidating" (added THIS mount).
+ * Memories already present when the rail mounts are treated as settled, so
+ * navigating between pages doesn't restart the timer. Purely a client-side
+ * approximation of the background cognify — the label is honest about that.
+ */
+function useConsolidating(memoryIds: string[]) {
+  const seen = React.useRef<Set<string> | null>(null);
+  const timers = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [active, setActive] = React.useState<Record<string, boolean>>({});
+
+  React.useEffect(() => {
+    if (seen.current === null) {
+      seen.current = new Set(memoryIds);
+      return;
+    }
+    for (const id of memoryIds) {
+      if (!seen.current.has(id)) {
+        seen.current.add(id);
+        setActive((a) => ({ ...a, [id]: true }));
+        timers.current[id] = setTimeout(
+          () => setActive((a) => ({ ...a, [id]: false })),
+          CONSOLIDATE_MS,
+        );
+      }
+    }
+  }, [memoryIds]);
+
+  const timersRef = timers.current;
+  React.useEffect(() => () => Object.values(timersRef).forEach(clearTimeout), [timersRef]);
+
+  return active;
+}
 
 /**
  * Agent Memory rail — a slim, collapsible right-side panel that makes the
@@ -18,6 +55,8 @@ export function AgentMemoryRail() {
   const identity = useUiStore((s) => s.identity);
   const setIdentity = useUiStore((s) => s.setIdentity);
   const memories = useUiStore((s) => s.sessionMemories);
+  const memoryIds = React.useMemo(() => memories.map((m) => m.id), [memories]);
+  const consolidating = useConsolidating(memoryIds);
 
   const [collapsed, setCollapsed] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
@@ -117,20 +156,39 @@ export function AgentMemoryRail() {
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {memories.map((m) => (
-              <li
-                key={m.id}
-                className={cn(
-                  "animate-memory-slide rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5",
-                  "text-[12px] leading-snug text-foreground",
-                )}
-              >
-                <span className="mr-1" aria-hidden>
-                  🧠
-                </span>
-                {m.text}
-              </li>
-            ))}
+            {memories.map((m) => {
+              const isConsolidating = consolidating[m.id];
+              return (
+                <li
+                  key={m.id}
+                  className={cn(
+                    "animate-memory-slide rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5",
+                    "text-[12px] leading-snug text-foreground",
+                  )}
+                >
+                  <div>
+                    <span className="mr-1" aria-hidden>
+                      🧠
+                    </span>
+                    {m.text}
+                  </div>
+                  {isConsolidating ? (
+                    <div
+                      className="mt-1 inline-flex items-center gap-1 text-[10px] text-text-muted"
+                      title="consolidating in background (~1 min)"
+                    >
+                      <Clock className="h-3 w-3 animate-pulse" />
+                      consolidating…
+                    </div>
+                  ) : (
+                    <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary/80">
+                      <Check className="h-3 w-3" />
+                      in memory
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

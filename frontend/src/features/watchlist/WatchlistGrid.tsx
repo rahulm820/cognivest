@@ -11,8 +11,8 @@ import { WatchlistCard } from "./WatchlistCard";
 export function WatchlistGrid() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {SEEDED_TICKERS.map((c) => (
-        <WatchlistCard key={c.ticker} ticker={c.ticker} name={c.name} />
+      {SEEDED_TICKERS.map((c, i) => (
+        <WatchlistCard key={c.ticker} ticker={c.ticker} name={c.name} index={i} />
       ))}
     </div>
   );

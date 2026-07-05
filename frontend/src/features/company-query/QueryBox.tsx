@@ -21,6 +21,8 @@ export interface QueryBoxProps {
   ticker: string;
   disabled?: boolean;
   onAsk: (question: string) => void;
+  /** Seed the draft (from a dashboard "What can I ask?" chip). Not auto-sent. */
+  initialValue?: string;
 }
 
 /**
@@ -28,8 +30,8 @@ export interface QueryBoxProps {
  * emerald and surfaces a "🧠 memory directive" label — making the mode-switch to
  * memory visible before the request is even sent.
  */
-export function QueryBox({ ticker, disabled = false, onAsk }: QueryBoxProps) {
-  const [question, setQuestion] = React.useState("");
+export function QueryBox({ ticker, disabled = false, onAsk, initialValue = "" }: QueryBoxProps) {
+  const [question, setQuestion] = React.useState(initialValue);
   const directive = isMemoryDirective(question);
 
   function handleSubmit(e: React.FormEvent) {

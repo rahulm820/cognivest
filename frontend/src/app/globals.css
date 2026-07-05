@@ -59,6 +59,34 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Keyboard-nav: one consistent emerald focus ring on every interactive element.
+     Components that draw their own ring opt out with focus-visible:outline-none. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Thin, dark scrollbars — default OS chrome reads unfinished on a dark app. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--surface-raised));
+  }
 }
 
 /* ── Motion primitives (150–250ms ease-out; staggers 60–80ms; nothing bounces) ── */
@@ -180,5 +208,221 @@
 
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* soft "system live" status dot (dashboard header) */
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0;
+      transform: scale(2.1);
+    }
+  }
+  .animate-pulse-soft {
+    animation: pulse-soft 2.4s ease-out infinite;
+    transform-origin: center;
+  }
+
+  /* scroll-reveal for landing sections (IntersectionObserver toggles .reveal-visible) */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 500ms ease-out,
+      transform 500ms ease-out;
+  }
+  .reveal-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Landing hero product mock — one shared 9s loop, pure CSS/SVG ──
+   Beats: line draws (0–22%) → markers drop + pulse (26–54%) → citation chip
+   slides in (44%) → hold → everything fades (92–97%) → restart. */
+@layer utilities {
+  .mock-el {
+    animation-duration: 9s;
+    animation-iteration-count: infinite;
+    animation-timing-function: ease-out;
+  }
+  @keyframes mock-line {
+    0% {
+      stroke-dashoffset: 100;
+      opacity: 1;
+    }
+    22%,
+    90% {
+      stroke-dashoffset: 0;
+      opacity: 1;
+    }
+    96%,
+    100% {
+      stroke-dashoffset: 0;
+      opacity: 0;
+    }
+  }
+  .mock-line {
+    stroke-dasharray: 100;
+    animation-name: mock-line;
+  }
+  @keyframes mock-fill {
+    0%,
+    18% {
+      opacity: 0;
+    }
+    28%,
+    90% {
+      opacity: 1;
+    }
+    96%,
+    100% {
+      opacity: 0;
+    }
+  }
+  .mock-fill {
+    animation-name: mock-fill;
+  }
+  @keyframes mock-marker-a {
+    0%,
+    26% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.4);
+    }
+    30%,
+    90% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    96%,
+    100% {
+      opacity: 0;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .mock-marker-a {
+    animation-name: mock-marker-a;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  @keyframes mock-marker-b {
+    0%,
+    34% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.4);
+    }
+    38%,
+    90% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    96%,
+    100% {
+      opacity: 0;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .mock-marker-b {
+    animation-name: mock-marker-b;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  @keyframes mock-pulse-a {
+    0%,
+    29% {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    31% {
+      opacity: 0.6;
+      transform: scale(0.6);
+    }
+    41% {
+      opacity: 0;
+      transform: scale(2.3);
+    }
+    43% {
+      opacity: 0.6;
+      transform: scale(0.6);
+    }
+    53%,
+    100% {
+      opacity: 0;
+      transform: scale(2.3);
+    }
+  }
+  .mock-pulse-a {
+    animation-name: mock-pulse-a;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  @keyframes mock-pulse-b {
+    0%,
+    37% {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    39% {
+      opacity: 0.6;
+      transform: scale(0.6);
+    }
+    49% {
+      opacity: 0;
+      transform: scale(2.3);
+    }
+    51% {
+      opacity: 0.6;
+      transform: scale(0.6);
+    }
+    61%,
+    100% {
+      opacity: 0;
+      transform: scale(2.3);
+    }
+  }
+  .mock-pulse-b {
+    animation-name: mock-pulse-b;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  @keyframes mock-chip {
+    0%,
+    44% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    50%,
+    90% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    96%,
+    100% {
+      opacity: 0;
+      transform: translateY(0);
+    }
+  }
+  .mock-chip {
+    animation-name: mock-chip;
+  }
+}
+
+/* Reduced motion: collapse every animation/transition to its end state. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
   }
 }

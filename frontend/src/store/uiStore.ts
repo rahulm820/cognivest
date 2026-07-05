@@ -29,11 +29,18 @@ export interface UiState {
   /** Preferences remembered via "remember:" directives, this session only. */
   sessionMemories: SessionMemory[];
 
+  /**
+   * A question staged from the dashboard ("What can I ask?" chips) to pre-fill
+   * the company QueryBox on next navigation. Keyed by ticker; consumed once.
+   */
+  prefillQuery: { ticker: string; question: string } | null;
+
   setSelectedTicker: (ticker: string | null) => void;
   setDateRange: (range: DateRange | null) => void;
   setIdentity: (identity: string) => void;
   setHoveredCitationId: (id: string | null) => void;
   addSessionMemory: (memory: SessionMemory) => void;
+  setPrefillQuery: (prefill: { ticker: string; question: string } | null) => void;
 }
 
 export const DEFAULT_IDENTITY = "demo-user";
@@ -46,6 +53,7 @@ export const useUiStore = create<UiState>()(
       identity: DEFAULT_IDENTITY,
       hoveredCitationId: null,
       sessionMemories: [],
+      prefillQuery: null,
 
       setSelectedTicker: (ticker) => set({ selectedTicker: ticker }),
       setDateRange: (range) => set({ dateRange: range }),
@@ -53,6 +61,7 @@ export const useUiStore = create<UiState>()(
       setHoveredCitationId: (id) => set({ hoveredCitationId: id }),
       addSessionMemory: (memory) =>
         set((state) => ({ sessionMemories: [memory, ...state.sessionMemories] })),
+      setPrefillQuery: (prefill) => set({ prefillQuery: prefill }),
     }),
     {
       name: "cognivest-ui",

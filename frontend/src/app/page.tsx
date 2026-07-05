@@ -1,6 +1,9 @@
-import { redirect } from "next/navigation";
+import { LandingPage } from "@/features/landing";
 
-/** Root route redirects to the dashboard. */
+/**
+ * Marketing landing at `/` — chrome-free (outside the (app) route group).
+ * Pure SVG/CSS product mock, zero API calls; "Open App →" enters /dashboard.
+ */
 export default function HomePage() {
-  redirect("/dashboard");
+  return <LandingPage />;
 }
