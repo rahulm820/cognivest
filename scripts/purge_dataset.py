@@ -1,48 +1,79 @@
 #!/usr/bin/env python3
-"""Purge a Cognee dataset for a ticker (admin only).
+"""Forget a ticker's Cognee memory — the lifecycle counterpart to backfill (#9).
 
-CLI equivalent of DELETE /memory/delete. Removes a company's Cognee dataset
-(company_{ticker}) entirely, or a date-bounded slice of it, going through the
-single Cognee seam (memory_service -> cognee_client). Never imports the Cognee
-SDK directly; never crosses datasets.
+CLI equivalent of ``DELETE /api/v1/memory/delete``. Goes through the single Cognee
+seam (memory_service -> cognee_client); never imports the Cognee SDK directly, never
+crosses datasets.
 
-Scaffold phase: body is a stub marked ``# TODO(phase-3)``.
-See scripts/README.md, docs/memory-architecture.md, docs/api.md.
+Two modes, both honest about Cognee 1.2.2's real capability — it can only forget a
+WHOLE dataset (there is no per-item / date-sliced delete, spike CONTRADICTION #2):
+
+  * full purge (default): ``forget(company_{ticker})`` + clear the dedup ledger.
+    The dataset is left empty.
+  * staleness purge (``--older-than-days N``): forget the whole dataset + clear the
+    ledger, then RE-BACKFILL only the last N days. Items that have aged out of the
+    collectors' N-day window do not come back; recent ones are rebuilt. This is a
+    rebuild-from-current-sources, not an in-place slice — see docs/memory-architecture.md.
+
+    docker compose exec backend python -m scripts.purge_dataset --ticker AAPL --yes
+    docker compose exec backend python -m scripts.purge_dataset --ticker AAPL --older-than-days 7 --yes
+    # or: make purge t=AAPL   |   make purge t=AAPL keep=7
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 
-SCOPES = ("all", "range")
+from scripts.backfill_ticker import backfill
+from src.database.session import get_sessionmaker
+from src.repositories.company_repo import CompanyRepository
+from src.repositories.ingestion_repo import IngestionRepository
+from src.services.memory_service import get_memory_service
 
 
-def purge(ticker: str, scope: str, date_from: str | None, date_to: str | None) -> None:
-    """Purge memory for ``company_{ticker}``.
+async def purge(ticker: str, *, older_than_days: int | None) -> None:
+    """Forget ``company_{ticker}`` and clear its ledger; optionally rebuild.
 
     Args:
-        ticker: ticker symbol; dataset is f"company_{ticker}".
-        scope: "all" to delete the whole dataset, "range" for a date-bounded slice.
-        date_from / date_to: bounds required when scope == "range".
-
-    TODO(phase-3): call memory_service purge (-> cognee_client delete), scoped to
-    the single dataset. For scope == "range", pass the date filter. Admin-only.
+        ticker: Ticker symbol; dataset is ``company_{ticker}``.
+        older_than_days: If set, after forgetting, re-backfill the last N days so only
+            recent (non-stale) items are restored. If None, the dataset stays empty.
     """
-    raise NotImplementedError("TODO(phase-3): call memory_service purge via the Cognee seam")
+    ticker = ticker.upper()
+    sessionmaker = get_sessionmaker()
+
+    # 1. Forget the whole Cognee dataset (idempotent) + clear the dedup ledger so a
+    #    subsequent re-backfill is not skipped by the dedup check.
+    async with sessionmaker() as session:
+        company = await CompanyRepository(session).get_by_ticker(ticker)
+        await get_memory_service().delete(ticker)
+        removed = 0
+        if company is not None:
+            removed = await IngestionRepository(session).delete_for_company(company.id)
+        await session.commit()
+    print(f"  forgot cognee dataset company_{ticker}; cleared {removed} ledger row(s)")
+
+    # 2. Staleness mode: rebuild from the retained window (its own session + commit).
+    if older_than_days is not None:
+        print(f"  rebuilding from the last {older_than_days}d...")
+        added = await backfill(ticker, days=older_than_days, news=True, price=True)
+        print(f"  rebuilt: {added} item(s) re-ingested into company_{ticker}")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Purge a Cognee dataset for a ticker (admin).")
+    parser = argparse.ArgumentParser(description="Forget a Cognee dataset for a ticker (admin).")
     parser.add_argument("--ticker", required=True, help="Ticker symbol, e.g. AAPL.")
     parser.add_argument(
-        "--scope",
-        choices=SCOPES,
-        default="all",
-        help="'all' = whole dataset; 'range' = date-bounded slice (default: %(default)s).",
+        "--older-than-days",
+        dest="older_than_days",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Keep only the last N days: forget, then re-backfill that window. "
+        "Omit for a full purge (leaves the dataset empty).",
     )
-    parser.add_argument("--from", dest="date_from", help="Start date (YYYY-MM-DD) for --scope range.")
-    parser.add_argument("--to", dest="date_to", help="End date (YYYY-MM-DD) for --scope range.")
     parser.add_argument(
         "--yes",
         action="store_true",
@@ -55,18 +86,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     ticker = args.ticker.upper()
 
-    if args.scope == "range" and not (args.date_from and args.date_to):
-        print("error: --scope range requires --from and --to", file=sys.stderr)
+    if args.older_than_days is not None and args.older_than_days < 0:
+        print("error: --older-than-days must be >= 0", file=sys.stderr)
         return 2
     if not args.yes:
-        print(
-            f"refusing to purge company_{ticker} (scope={args.scope}) without --yes",
-            file=sys.stderr,
-        )
+        print(f"refusing to purge company_{ticker} without --yes", file=sys.stderr)
         return 2
 
-    print(f"Purging company_{ticker} (scope={args.scope})...")
-    purge(ticker=ticker, scope=args.scope, date_from=args.date_from, date_to=args.date_to)
+    mode = "full purge" if args.older_than_days is None else f"keep last {args.older_than_days}d"
+    print(f"Purging company_{ticker} ({mode})...")
+    asyncio.run(purge(ticker, older_than_days=args.older_than_days))
     return 0
 
 

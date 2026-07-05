@@ -455,6 +455,11 @@ class CogneeClient:
         deletion is ``forget(dataset="company_TICKER")`` for a whole-ticker purge.
         Sliced (date-bounded) deletion is not supported by this seam.
 
+        Idempotent: forgetting a dataset that was never created (or an already-empty
+        store) is a no-op success — the "no data" signatures are swallowed so the
+        forget lifecycle (issue #9) is safe to run against a fresh ticker. Every
+        other error propagates.
+
         Args:
             ticker: The company ticker; resolved to ``company_{ticker}``.
             filters: If provided, raises — sliced delete is unsupported.
@@ -470,7 +475,13 @@ class CogneeClient:
                 "delete() purges the whole ticker dataset via forget()"
             )
         logger.debug("cognee.forget", dataset=dataset)
-        await cognee.forget(dataset=dataset)
+        try:
+            await cognee.forget(dataset=dataset)
+        except Exception as exc:  # noqa: BLE001 - re-raised unless it is a no-data signal
+            if _is_no_data_error(exc):
+                logger.info("cognee.forget.no_data", dataset=dataset)
+                return
+            raise
 
     # ---------------------------------------------------- per-user memory (#11)
     #

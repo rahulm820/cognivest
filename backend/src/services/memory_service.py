@@ -236,15 +236,26 @@ class MemoryService:
         await self._client.cognify(ticker)
 
     async def delete(self, ticker: str, *, date_range: DateRange | None = None) -> None:
-        """Purge a ticker's dataset or a date-bounded slice of it.
+        """Forget a ticker's ENTIRE Cognee dataset (``forget(company_{ticker})``).
 
-        Raises:
-            NotImplementedError: Deletion belongs to the purge issue (#9); the seam's
-                ``delete`` is a scaffold stub (and deprecated in Cognee 1.2.2 — spike
-                CONTRADICTION #2). Out of scope for issue #5.
+        Cognee 1.2.2 has no per-item or date-sliced deletion (spike CONTRADICTION #2),
+        so this always forgets the whole dataset. ``date_range`` is therefore advisory
+        only and is NOT honored as an in-place slice: a date-bounded "staleness" purge
+        is done one layer up (``scripts/purge_dataset.py``) by forgetting the dataset
+        and re-backfilling only the retained window — see issue #9.
+
+        Idempotent via the seam: forgetting a never-created dataset is a no-op success.
+        Note this clears only Cognee's memory; the Postgres dedup ledger is owned by
+        the caller (route/script), which clears it so a re-backfill isn't deduped away.
+
+        Args:
+            ticker: Company ticker; scoped to ``company_{ticker}`` by the seam.
+            date_range: Advisory only (see above); a non-None value is logged and
+                ignored — the whole dataset is forgotten regardless.
         """
-        # TODO(#9): await self._client.delete(ticker, filters=...); prefer forget().
-        raise NotImplementedError("TODO(#9): implement MemoryService.delete")
+        if date_range is not None:
+            logger.info("memory.delete.range_ignored", ticker=ticker.upper())
+        await self._client.delete(ticker)
 
     # ------------------------------------------------------------------ helpers
 

@@ -13,9 +13,14 @@ only caller of the Cognee client. Handlers stay thin.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.session import get_db
+from src.memory.dataset_naming import dataset_name, normalize_ticker
 from src.middleware.auth_middleware import require_service_token
+from src.repositories.company_repo import CompanyRepository
+from src.repositories.ingestion_repo import IngestionRepository
 from src.schemas.memory import (
     MemoryAck,
     MemoryContext,
@@ -26,6 +31,7 @@ from src.schemas.memory import (
     MemorySearchOut,
     MemoryStore,
 )
+from src.services.memory_service import get_memory_service
 
 router = APIRouter(
     prefix="/memory",
@@ -79,11 +85,35 @@ async def reflection(payload: MemoryReflection) -> MemoryAck:
 
 
 @router.delete("/delete", response_model=MemoryAck)
-async def delete(payload: MemoryDelete) -> MemoryAck:
-    """Purge a company's dataset or a date-bounded slice of it.
+async def delete(payload: MemoryDelete, db: AsyncSession = Depends(get_db)) -> MemoryAck:
+    """Forget a company's entire Cognee dataset and clear its dedup ledger.
+
+    Cognee 1.2.2 has no per-item/date-sliced deletion (spike CONTRADICTION #2), so a
+    ``date_range`` on the payload is advisory only — the WHOLE ``company_{ticker}``
+    dataset is forgotten regardless. Date-bounded "staleness" purges (keep only the
+    last N days) are driven by ``scripts/purge_dataset.py``, which forgets the dataset
+    then re-backfills the retained window (issue #9). Clearing the ledger here lets a
+    subsequent re-backfill repopulate without being skipped by the dedup check.
+
+    Idempotent: forgetting a never-created dataset (and clearing an absent company's
+    ledger) is a no-op success.
 
     Raises:
-        NotImplementedError: Always, in the scaffold phase.
+        HTTPException: 400 if the ticker fails format validation.
     """
-    # TODO(phase-3): memory_service.delete(payload.ticker, date_range=payload.date_range)
-    raise NotImplementedError("TODO(phase-3): implement memory.delete")
+    try:
+        normalized = normalize_ticker(payload.ticker)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await get_memory_service().delete(normalized, date_range=payload.date_range)
+
+    removed = 0
+    company = await CompanyRepository(db).get_by_ticker(normalized)
+    if company is not None:
+        removed = await IngestionRepository(db).delete_for_company(company.id)
+
+    return MemoryAck(
+        dataset_name=dataset_name(normalized),
+        detail=f"forgot dataset; cleared {removed} dedup-ledger row(s)",
+    )
