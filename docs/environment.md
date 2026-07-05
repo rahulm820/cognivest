@@ -68,6 +68,23 @@ and answer generation; embeddings run **locally** via fastembed (no API key, no 
 > `gemini/gemini-2.0-flash` is deprecated by Google (free tier `limit: 0`) — use `2.5-flash`. Omitting
 > `EMBEDDING_DIMENSIONS` silently falls back to 3072 and breaks the first vector write (spike §3).
 
+### Alternative LLM: Groq (if you hit Gemini's free-tier limit)
+
+Gemini's free tier is small (5 req/min, **20 req/day** on `2.5-flash`), and one `cognify` fires
+several calls — enough to exhaust a day's quota during heavy testing. Groq's free tier is looser and
+works as a drop-in for the LLM (embeddings stay on local fastembed — unchanged). **Verified working**
+end-to-end (cognify + cited query). Cognee has no `groq` provider enum, so route it through the
+OpenAI adapter + litellm's native `groq/` model prefix:
+
+```bash
+LLM_PROVIDER=openai                      # Cognee enum has no 'groq'; the openai adapter + litellm route it
+LLM_MODEL=groq/llama-3.3-70b-versatile   # litellm sends this to Groq using LLM_API_KEY
+LLM_API_KEY=gsk_…                        # a Groq key (https://console.groq.com)
+```
+
+This is a **local-dev override only** — the committed default stays Gemini. Setting `LLM_PROVIDER=groq`
+directly fails with `ValueError: 'groq' is not a valid LLMProvider`.
+
 ## Cognee: vector / graph / data dir (unverified — left commented)
 
 Present in `.env.example` but **commented out**. The spike did not confirm Cognee reads these

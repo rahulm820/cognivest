@@ -24,7 +24,10 @@ export interface NormalizedApiError {
 export const apiClient: AxiosInstance = axios.create({
   baseURL,
   headers: { "Content-Type": "application/json" },
-  timeout: 15_000,
+  // The query path runs Cognee retrieval (vector + graph) plus an LLM completion,
+  // which realistically takes ~15-25s. 15s was too tight and aborted successful
+  // answers as "warming up". 60s gives the LLM room without hanging the UI forever.
+  timeout: 60_000,
 });
 
 // --- Request interceptor: attach demo identity ----------------------------

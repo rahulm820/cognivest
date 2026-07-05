@@ -112,6 +112,13 @@ def _is_no_data_error(exc: BaseException) -> bool:
         return True
     if getattr(exc, "name", None) in {"SearchPreconditionError", "DatasetNotFoundError"}:
         return True
+    # Cognee's retrievers (notably CHUNKS on a brand-new/empty user_{id} dataset —
+    # a first-time user with no stored memory yet) raise NoDataError("No data found
+    # in the system", 404) rather than DatasetNotFoundError. Same meaning: nothing
+    # ingested yet. Matched structurally so we don't import cognee's exception here.
+    # Without this, per-user personalization (#11) 500s for every first-time caller.
+    if type(exc).__name__ == "NoDataError":
+        return True
     return (
         type(exc).__name__ == "OperationalError"
         and "unable to open database file" in str(exc)

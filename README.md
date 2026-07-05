@@ -61,12 +61,18 @@ cp .env.example .env
 make up             # build + start postgres, redis, backend, worker, beat, frontend
 make migrate        # apply Alembic migrations
 make seed           # seed demo companies (AAPL, MSFT, TSLA) + a demo user
-make backfill t=AAPL  # ingest AAPL prices (yfinance) + news (GDELT) into Cognee
+make backfill t=AAPL  # ingest AAPL price history (yfinance) into Cognee
+docker compose exec backend python -m scripts.ingest_demo_corpus --ticker AAPL  # curated demo news
 ```
 
-> `make backfill` populates a ticker's memory so queries have something to answer.
-> It fetches prices + news, then runs Cognee's `cognify` (graph build) — the cognify
-> step calls the LLM, so it needs your `LLM_API_KEY` set and a minute or so to finish.
+> These two steps populate a ticker's memory so queries have something to answer:
+> `make backfill` ingests **price history** (yfinance, keyless), and `ingest_demo_corpus`
+> ingests a small **verified news corpus** (`data/demo_corpus.json`) — the demo uses this
+> instead of the live GDELT feed, which is rate-limited. Both end with Cognee's `cognify`
+> (graph build), which calls the LLM, so they need your `LLM_API_KEY` and a minute to finish.
+>
+> **First run is slower:** the first `cognify` downloads the local embedding model
+> (`all-MiniLM-L6-v2`, ~90 MB from HuggingFace) once, then caches it. Later runs skip this.
 
 Then:
 

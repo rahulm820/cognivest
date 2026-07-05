@@ -31,6 +31,10 @@ x-backend-common: &backend-common
     # Repo-root scripts (backfill/purge/seed) mounted in so `make seed` et al.
     # can run in-container; the ./backend mount above does not include them.
     - ./scripts:/app/scripts
+    # Curated demo news corpus (issue #17). Mounted so `ingest_demo_corpus`
+    # can read data/demo_corpus.json in-container — GDELT is rate-limited for
+    # the live demo, so demo news citations come from this verified file.
+    - ./data:/app/data
   depends_on:
     postgres:
       condition: service_healthy
