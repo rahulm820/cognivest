@@ -1,0 +1,29 @@
+{
+  "description": "Hand-curated, source-verified demo news corpus (issue #17). Replaces the 429-blocked GDELT live fetch for the demo. Every item is a REAL event with a REAL, verifiable source_url. AAPL only: MSFT/TSLA are intentionally absent because no verified URLs were available — an honest 1-ticker corpus beats a 3-ticker corpus with invented sources.",
+  "items": [
+    {
+      "ticker": "AAPL",
+      "title": "Apple reports Q2 FY2026 results",
+      "source": "Apple Newsroom",
+      "source_url": "https://www.apple.com/newsroom/2026/04/apple-reports-second-quarter-results/",
+      "published_at": "2026-04-30T00:00:00Z",
+      "summary": "Apple announced its fiscal 2026 second-quarter financial results, with an update on iPhone and Services performance."
+    },
+    {
+      "ticker": "AAPL",
+      "title": "India to assemble 28% of iPhones in 2026",
+      "source": "Moneycontrol",
+      "source_url": "https://www.moneycontrol.com/news/business/india-to-assemble-28-of-global-iphones-in-2026-as-apple-deepens-supply-chain-shift-beyond-china-13920170.html",
+      "published_at": "2026-05-15T00:00:00Z",
+      "summary": "India is set to assemble 28% of global iPhones in 2026 as Apple shifts its supply chain beyond China. China's share fell to 74% in 2025 from 83% in 2024, while India's rose from 14% to 23%."
+    },
+    {
+      "ticker": "AAPL",
+      "title": "Apple ships security updates early on AI threat",
+      "source": "Reuters",
+      "source_url": "https://www.reuters.com/business/apple-says-it-is-releasing-updates-early-response-ai-cybersecurity-concerns-2026-06-29/",
+      "published_at": "2026-06-30T00:00:00Z",
+      "summary": "Apple is releasing iOS security updates ahead of its usual version cycle, responding to AI-driven cybersecurity concerns that shorten the window attackers need to exploit flaws."
+    }
+  ]
+}
