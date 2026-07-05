@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addCompany, deleteCompany, getCompanies } from "@/services/api";
-import { QUERY_KEYS } from "@/constants";
+import { addCompany, deleteCompany } from "@/services/api";
+import { QUERY_KEYS, SEEDED_TICKERS } from "@/constants";
 import type { Company } from "@/types";
 
 /**
@@ -10,11 +10,27 @@ import type { Company } from "@/types";
  * TODO(phase-5): refine staleTime, optimistic updates, and error toasts.
  */
 
-/** Fetch the watchlisted companies. */
+/**
+ * Fetch the watchlisted companies.
+ *
+ * `GET /companies` currently returns 501, so the demo resolves the hardcoded
+ * seeded watchlist (AAPL / MSFT / TSLA from `make seed`) instead of hitting the
+ * live endpoint. Kept as a TanStack query so consumers (loading/error states)
+ * are unchanged when the endpoint lands and `queryFn` swaps back to
+ * `getCompanies`.
+ */
 export function useWatchlist() {
   return useQuery<Company[]>({
     queryKey: QUERY_KEYS.watchlist,
-    queryFn: getCompanies,
+    queryFn: async () =>
+      SEEDED_TICKERS.map((c) => ({
+        id: c.ticker,
+        ticker: c.ticker,
+        name: c.name,
+        status: "active" as const,
+        createdAt: "",
+      })),
+    staleTime: Infinity,
   });
 }
 

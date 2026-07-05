@@ -26,10 +26,17 @@ const config: Config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        surface: {
+          DEFAULT: "hsl(var(--card))",
+          raised: "hsl(var(--surface-raised))",
+        },
+        "surface-raised": "hsl(var(--surface-raised))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          hover: "hsl(var(--accent-hover))",
         },
+        "accent-hover": "hsl(var(--accent-hover))",
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -38,10 +45,12 @@ const config: Config = {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        danger: "hsl(var(--destructive))",
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
+        "text-muted": "hsl(var(--muted-foreground))",
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
@@ -52,9 +61,14 @@ const config: Config = {
         },
       },
       borderRadius: {
+        xl: "calc(var(--radius) + 4px)",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        elevated: "0 4px 24px rgba(0, 0, 0, 0.35)",
+        "marker-glow": "0 0 12px rgba(16, 185, 129, 0.55)",
       },
     },
   },
