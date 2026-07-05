@@ -69,6 +69,7 @@ const config: Config = {
       boxShadow: {
         elevated: "0 4px 24px rgba(0, 0, 0, 0.35)",
         "marker-glow": "0 0 12px rgba(16, 185, 129, 0.55)",
+        "glow-card": "0 0 0 1px rgba(16, 185, 129, 0.22), 0 8px 32px rgba(16, 185, 129, 0.10)",
       },
     },
   },

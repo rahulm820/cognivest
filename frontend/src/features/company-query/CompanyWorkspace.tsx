@@ -13,6 +13,7 @@ import { normalizeError } from "@/services/api";
 import { QueryBox, extractPreference } from "./QueryBox";
 import { AnswerPanel } from "./AnswerPanel";
 import { MemoryCard } from "./MemoryCard";
+import { AskInvite } from "./AskInvite";
 
 /** The ack prefix the backend emits for a "remember:" directive (exact match). */
 const MEMORY_ACK_PREFIX = "Got it — I'll remember";
@@ -32,6 +33,26 @@ export function CompanyWorkspace({ ticker }: { ticker: string }) {
   const price = useCompanyPrice(ticker, range);
   const query = useCompanyQuery(ticker);
   const addSessionMemory = useUiStore((s) => s.addSessionMemory);
+  const prefillQuery = useUiStore((s) => s.prefillQuery);
+  const setPrefillQuery = useUiStore((s) => s.setPrefillQuery);
+
+  // A question staged from the dashboard, or an empty-state example chip, gets
+  // seeded into the QueryBox draft (NOT auto-sent). Bumping `prefillKey` remounts
+  // the box so its internal draft picks up the new `initialValue`.
+  const [prefill, setPrefill] = React.useState("");
+  const [prefillKey, setPrefillKey] = React.useState(0);
+
+  const seedPrefill = React.useCallback((text: string) => {
+    setPrefill(text);
+    setPrefillKey((k) => k + 1);
+  }, []);
+
+  React.useEffect(() => {
+    if (prefillQuery && prefillQuery.ticker === ticker) {
+      seedPrefill(prefillQuery.question);
+      setPrefillQuery(null);
+    }
+  }, [prefillQuery, ticker, seedPrefill, setPrefillQuery]);
 
   // Stable reference: React Query keeps `price.data` identity between renders,
   // so markers/effects downstream don't churn (and the marker card stays open).
@@ -110,7 +131,15 @@ export function CompanyWorkspace({ ticker }: { ticker: string }) {
               )}
             </div>
           </div>
-          <DateRangePicker value={range} onChange={setRange} />
+          <div className="flex items-center gap-3">
+            <span
+              className="hidden rounded-md border border-border bg-surface-raised px-2 py-1 font-mono text-[11px] text-text-muted sm:inline-block"
+              title="per-ticker Cognee dataset"
+            >
+              graph: company_{ticker}
+            </span>
+            <DateRangePicker value={range} onChange={setRange} />
+          </div>
         </div>
 
         <PriceChart
@@ -123,13 +152,16 @@ export function CompanyWorkspace({ ticker }: { ticker: string }) {
         />
 
         <div className="space-y-4">
-          <QueryBox ticker={ticker} disabled={query.isPending} onAsk={handleAsk} />
+          <QueryBox
+            key={prefillKey}
+            ticker={ticker}
+            disabled={query.isPending}
+            onAsk={handleAsk}
+            initialValue={prefill}
+          />
 
           {!hasResult ? (
-            <p className="text-[13px] text-text-muted">
-              Ask a question about {ticker} — the answer&apos;s sources will land on the chart
-              above.
-            </p>
+            <AskInvite ticker={ticker} onPick={seedPrefill} />
           ) : memoryAck ? (
             <MemoryCard text={memoryAck.text} />
           ) : (
