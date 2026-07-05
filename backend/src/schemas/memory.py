@@ -83,6 +83,26 @@ class MemoryReflection(BaseModel):
     ticker: str
 
 
+class MemoryReflectionFeedback(BaseModel):
+    """User feedback on a prior answer (the ``POST /memory/reflection`` request).
+
+    The feedback is stored as user-memory context that shapes future answers — it is
+    NOT sent to Cognee's native ``improve()``/``FeedbackEntry`` feedback API (we do not
+    use it). See ``MemoryService.remember_feedback``.
+    """
+
+    ticker: str = Field(description="Ticker the answered question was scoped to.")
+    question: str = Field(
+        min_length=1, description="The question the prior answer responded to."
+    )
+    feedback_text: str = Field(
+        description="The user's steer, stored verbatim as user memory. "
+        "Empty/whitespace-only is rejected with 400 by the route (not 422), so the "
+        "empty-feedback contract is uniform."
+    )
+    helpful: bool = Field(description="Whether the user found the prior answer helpful.")
+
+
 class MemoryDelete(BaseModel):
     """Request to purge a dataset or a date-bounded slice of it."""
 

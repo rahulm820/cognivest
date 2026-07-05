@@ -7,17 +7,17 @@ only caller of the Cognee client. Handlers stay thin.
     POST   /memory/store      → ingest (add + cognify)
     POST   /memory/search     → retrieval
     POST   /memory/context    → pre-LLM context assembly
-    POST   /memory/reflection → consolidation/cognify pass
+    POST   /memory/reflection → record user feedback as answer-shaping user memory
     DELETE /memory/delete     → purge dataset or slice
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db
-from src.memory.dataset_naming import dataset_name, normalize_ticker
+from src.memory.dataset_naming import dataset_name, normalize_ticker, user_dataset_name
 from src.middleware.auth_middleware import require_service_token
 from src.repositories.company_repo import CompanyRepository
 from src.repositories.ingestion_repo import IngestionRepository
@@ -26,7 +26,7 @@ from src.schemas.memory import (
     MemoryContext,
     MemoryContextOut,
     MemoryDelete,
-    MemoryReflection,
+    MemoryReflectionFeedback,
     MemorySearch,
     MemorySearchOut,
     MemoryStore,
@@ -74,14 +74,50 @@ async def context(payload: MemoryContext) -> MemoryContextOut:
 
 
 @router.post("/reflection", response_model=MemoryAck, status_code=status.HTTP_202_ACCEPTED)
-async def reflection(payload: MemoryReflection) -> MemoryAck:
-    """Trigger a consolidation/cognify reflection pass for a company.
+async def reflection(
+    payload: MemoryReflectionFeedback,
+    x_user_id: str = Header(default="demo-user", alias="X-User-Id"),
+) -> MemoryAck:
+    """Record user feedback so it shapes this user's future answers.
+
+    The feedback is stored as user-memory context that shapes future answers: it is
+    persisted into the caller's ``user_{id}`` dataset (via ``add_user_memory`` + a
+    detached ``cognify_user``) and later surfaces through the SAME personalization read
+    path that folds a user's stated preferences into their company queries. This is NOT
+    Cognee's native ``improve()``/``FeedbackEntry`` feedback API — we do not use it; the
+    feedback is plain user-memory context.
+
+    The ack is immediate (202 Accepted): the write is synchronous but the cognify that
+    makes the feedback retrievable runs detached in the background (~a minute), so no
+    synchronous cognify sits on the request path. A missing ``X-User-Id`` header
+    defaults to ``demo-user`` (consistent with the app's demo identity).
 
     Raises:
-        NotImplementedError: Always, in the scaffold phase.
+        HTTPException: 400 if the ticker fails format validation, or ``feedback_text``
+            is empty/whitespace-only.
     """
-    # TODO(phase-3): memory_service.reflect(payload.ticker)
-    raise NotImplementedError("TODO(phase-3): implement memory.reflection")
+    try:
+        normalized = normalize_ticker(payload.ticker)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if not payload.feedback_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="feedback_text must not be empty",
+        )
+
+    await get_memory_service().remember_feedback(
+        x_user_id,
+        normalized,
+        payload.question,
+        payload.feedback_text,
+        helpful=payload.helpful,
+    )
+    return MemoryAck(
+        dataset_name=user_dataset_name(x_user_id),
+        detail="feedback stored as user memory context shaping future answers",
+    )
 
 
 @router.delete("/delete", response_model=MemoryAck)
