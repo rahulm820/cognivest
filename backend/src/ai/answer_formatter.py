@@ -3,7 +3,7 @@
 A single, stateless Claude call per user query, grounded in the context retrieved by
 Cognee. No multi-agent orchestration in v1 (ARCHITECTURE.md §6). The Anthropic client
 is constructed here (this layer owns the LLM call); the model defaults to
-``settings.llm_model`` (``claude-opus-4-8``).
+``claude-opus-4-8``.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any
 
 from src.ai.prompt_templates import SYSTEM_PROMPT, render_answer_prompt
-from src.config.settings import get_settings
 from src.schemas.query import Citation, QueryResponse
 
 
@@ -47,13 +46,12 @@ async def format_answer(
     Raises:
         NotImplementedError: Always, in the scaffold phase.
     """
-    settings = get_settings()
     _ = SYSTEM_PROMPT  # system prompt sent verbatim to the LLM
     _ = render_answer_prompt  # user prompt rendered from template
-    _ = settings.llm_model  # default model: claude-opus-4-8
+    _ = "claude-opus-4-8"  # dead scaffold — not on any route; single-LLM design uses cognee's GRAPH_COMPLETION (see docs)
     # TODO(phase-4):
     #   1. context_block, citations = _build_context_block(results)
-    #   2. call anthropic client (model=settings.llm_model, max_tokens=settings.llm_max_tokens)
+    #   2. call anthropic client (model="claude-opus-4-8", max_tokens=2048)
     #      with SYSTEM_PROMPT + render_answer_prompt(...)
     #   3. parse answer text, attach citations + graph snippet -> QueryResponse
     raise NotImplementedError("TODO(phase-4): implement Claude answer formatting")

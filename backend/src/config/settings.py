@@ -64,12 +64,6 @@ class Settings(BaseSettings):
     cognee_vector_db_provider: str = "lancedb"
     cognee_graph_db_provider: str = "kuzu"
     cognee_data_dir: str = "/data/cognee"
-    cognee_llm_provider: str = "anthropic"
-
-    # ---- LLM (Anthropic Claude) ----
-    anthropic_api_key: str = ""
-    llm_model: str = "claude-opus-4-8"
-    llm_max_tokens: int = 2048
 
     # ---- External data vendors (all pluggable) ----
     market_data_provider: str = "polygon"

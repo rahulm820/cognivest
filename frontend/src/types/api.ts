@@ -59,8 +59,8 @@ export interface QueryRequest {
 export interface Citation {
   id: string;
   title: string;
-  url: string;
-  publishedAt: string;
+  url: string | null;
+  publishedAt: string | null;
 }
 
 /** Minimal graph snippet returned alongside an answer. */
