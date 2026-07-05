@@ -31,6 +31,12 @@ x-backend-common: &backend-common
     # Repo-root scripts (backfill/purge/seed) mounted in so `make seed` et al.
     # can run in-container; the ./backend mount above does not include them.
     - ./scripts:/app/scripts
+    # Demo corpus data (ingest_demo_corpus reads data/demo_corpus.json).
+    - ./data:/app/data
+    # Persist cognee's graph + vector stores so data survives container
+    # recreation (otherwise every --force-recreate wipes the ingested graph).
+    - cognee_system:/usr/local/lib/python3.11/site-packages/cognee/.cognee_system
+    - cognee_data_store:/usr/local/lib/python3.11/site-packages/cognee/.cognee_data
   depends_on:
     postgres:
       condition: service_healthy
@@ -108,3 +114,5 @@ services:
 volumes:
   pgdata:
   redisdata:
+  cognee_system:
+  cognee_data_store:
