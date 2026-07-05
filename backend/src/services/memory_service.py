@@ -182,6 +182,52 @@ class MemoryService:
             citations=[],
         )
 
+    async def remember_feedback(
+        self,
+        user_id: str,
+        ticker: str,
+        question: str,
+        feedback_text: str,
+        *,
+        helpful: bool,
+    ) -> None:
+        """Store user feedback on a prior answer as user-memory context.
+
+        Mirrors :meth:`remember_preference`: writes the feedback to ``user_{id}``
+        synchronously (fast ``add``), then fires ``cognify_user`` as a detached
+        background task — no synchronous cognify on the request path. The feedback is
+        stored as plain user memory (a ``USER FEEDBACK`` note), NOT sent to Cognee's
+        native ``improve()``/``FeedbackEntry`` API. It shapes future answers because the
+        existing personalization read path (:meth:`_retrieve_user_context` ->
+        :meth:`_augment_query`) folds this user's stored notes into their subsequent
+        company queries, so later answers emphasize the aspects the feedback steers
+        toward. It becomes retrievable within ~a minute, once the background cognify
+        completes.
+
+        Args:
+            user_id: Raw ``X-User-Id``; scoped to ``user_{id}`` by the seam.
+            ticker: The company the feedback is about (recorded in the note text).
+            question: The question the prior answer responded to.
+            feedback_text: The user's steer (e.g. "focus on risks, less hype").
+            helpful: Whether the user found the prior answer helpful.
+        """
+        at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        verdict = "helpful" if helpful else "not helpful"
+        content = (
+            f"USER FEEDBACK ({at}, {ticker}) on Q '{question.strip()}': "
+            f"{feedback_text.strip()} [rated {verdict}]"
+        )
+        await self._client.add_user_memory(user_id, content)
+        # Detached: makes the feedback retrievable within ~a minute; rides the same
+        # cognify that consolidates stored preferences + Q&A history.
+        self._spawn(self._client.cognify_user(user_id))
+        logger.info(
+            "memory.user_feedback.stored",
+            ticker=ticker,
+            helpful=helpful,
+            feedback_len=len(feedback_text.strip()),
+        )
+
     async def search(
         self,
         ticker: str,
